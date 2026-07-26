@@ -15,7 +15,8 @@ RUN apt-get update \
 
 # Copy the zip into the image (the repo currently contains the zip file)
 # Use the JSON-array form for COPY so filenames with spaces/parentheses are handled correctly
-COPY ["afm-frontier-markets-fixed (1).zip", "./project.zip"]
+# Updated to reference the renamed archive without spaces/parentheses
+COPY ["afm-frontier-markets-fixed-1.zip", "./project.zip"]
 
 # Unzip into /app and move contents up if needed
 RUN unzip project.zip -d /app || true \
