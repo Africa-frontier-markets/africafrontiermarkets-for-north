@@ -19,7 +19,7 @@ COPY ["afm-frontier-markets-fixed (1).zip", "./project.zip"]
 
 # Unzip into /app and move contents up if needed
 RUN unzip project.zip -d /app || true \
-    && if [ -d ./afm-frontier-markets-fixed ]; then mv ./afm-frontier-markets-fixed/* ./ || true; fi \
+    && if [ -d ./afm-frontier-markets-fixed ]; then mv ./afm-frontier-markets-fixed/* . || true; fi \
     && rm -f project.zip
 
 # Install Python deps if requirements.txt exists
