@@ -1,0 +1,170 @@
+services:
+  - type: web
+    name: afm-prod-gateway-v23
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "gunicorn api_gateway.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DATABASE_URL
+        value: "{{ .Env.DATABASE_URL | replace "postgresql://" "postgresql+asyncpg://" }}"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: afm-redis-free
+          property: connectionString
+# AFM — Render Blueprint
+#
+# Deploy: push this repo to GitHub/GitLab, then in the Render Dashboard
+# choose New -> Blueprint and point it at the repo. Render will provision
+# everything below in one go. You'll be prompted for every env var marked
+# `sync: false` (PSP keys, allowed CORS origins, etc).
+#
+# Plan/region defaults below are a starting point (paid "starter" tier —
+# the free tier can't run preDeployCommand, spins down when idle, and
+# Render Key Value's free tier is quite limited). Adjust to taste.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+envVarGroups:
+  - name: afm-shared
+    envVars:
+      # ── Core / security ────────────────────────────────────────────
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JSON_LOGS
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true   # Render generates a strong random value once
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+
+      # ── Datastores (auto-wired to the resources below) ─────────────
+      - key: DATABASE_URL
+        fromDatabase:
+          name: afm-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: afm-redis
+          property: connectionString
+
+      # Conservative pool sizes for a starter Postgres/Redis plan. Each
+      # uvicorn worker process (and the separate worker service) opens
+      # its own pool — multiply this by WEB_CONCURRENCY × instance count
+      # to estimate total connections against your plan's max.
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: REDIS_POOL_SIZE
+        value: "20"
+
+      # ── CORS — replace with your real frontend domain(s) at deploy time
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # ── AFM revenue model (defaults match revenue_engine.py) ────────
+      - key: AFM_COMMISSION_BPS
+        value: "25"
+      - key: AFM_MIN_FEE_USD
+        value: "0.50"
+      - key: AFM_MAX_FEE_USD
+        value: "50.00"
+
+      # ── PSP credentials — set real values in the Render dashboard.
+      # Leaving these unset is safe: psp_router will simply skip any PSP
+      # without credentials (see payment_hub/psp_router.py), and the app
+      # now hard-fails a payment attempt in production rather than
+      # silently simulating success if none are configured.
+      - key: KORA_API_KEY
+        sync: false
+      - key: KORA_SECRET_KEY
+        sync: false
+      - key: FINCRA_API_KEY
+        sync: false
+      - key: FINCRA_SECRET_KEY
+        sync: false
+      - key: FLUTTERWAVE_PUBLIC_KEY
+        sync: false
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: KORA_WEBHOOK_SECRET
+        sync: false
+      - key: FINCRA_WEBHOOK_SECRET
+        sync: false
+
+      # ── Alpaca / trading — unused today (trading_engine/ is
+      # unimplemented, see README "Scope reality check"). Included for
+      # forward-compat only.
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPACA_PAPER
+        value: "true"
+
+databases:
+  - name: afm-db
+    databaseName: afm
+    user: afm_user
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []   # only reachable from your Render services' private network
+
+services:
+  # ── Redis / Key Value (event streams + idempotency support) ─────────
+  - type: redis
+    name: afm-redis
+    plan: free
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: noeviction   # Streams data shouldn't be evicted under memory pressure
+
+  # ── API (FastAPI, gunicorn-free — uvicorn's own multi-worker mode) ───
+  - type: web
+    name: afm-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    healthCheckPath: /health
+    buildCommand: "pip install -r requirements.txt && alembic upgrade head"
+    # preDeployCommand requires a paid instance type (this blueprint uses
+    # `starter`, which qualifies). On the free tier, migrations would need
+    # to move into buildCommand instead: append " && alembic upgrade head".
+    # preDeployCommand: "alembic upgrade head"
+    startCommand: "uvicorn api_gateway.main:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2} --proxy-headers --forwarded-allow-ips='*'"
+    envVars:
+      - fromGroup: afm-shared
+      - key: WEB_CONCURRENCY
+        value: "2"
+
+  # ── Background worker (event_bus/worker.py — consumes afm:events) ───
+  - type: worker
+    name: afm-worker
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m event_bus.worker"
+    envVars:
+      - fromGroup: afm-shared

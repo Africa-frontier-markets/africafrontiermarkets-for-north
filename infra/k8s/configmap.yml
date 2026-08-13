@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: afm-config
+  namespace: africa-frontier-markets
+data:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+  JSON_LOGS: 'true'

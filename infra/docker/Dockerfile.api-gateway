@@ -1,0 +1,39 @@
+# Multi-stage production build
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+RUN groupadd -r afm && useradd -r -g afm afm
+
+COPY --from=builder /root/.local /home/afm/.local
+ENV PATH=/home/afm/.local/bin:$PATH
+
+COPY config/ ./config/
+COPY event_bus/ ./event_bus/
+COPY market_gateway/ ./market_gateway/
+COPY payment_hub/ ./payment_hub/
+COPY platform_manager/ ./platform_manager/
+COPY revenue_engine/ ./revenue_engine/
+COPY easymarkets/ ./easymarkets/
+COPY api_gateway/ ./api_gateway/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONFAULTHANDLER=1
+
+USER afm
+
+EXPOSE 8000
+
+# Production Correction: Run migrations before starting
+CMD ["sh", "-c", "alembic upgrade head && uvicorn api_gateway.main:app --host 0.0.0.0 --port 8000 --workers 4"]
