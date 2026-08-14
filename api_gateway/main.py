@@ -212,6 +212,73 @@ async def broker_list_accounts():
         raise HTTPException(status_code=502, detail=str(exc))
     return {"accounts": accounts}
 
+class BrokerAccountCreateRequest(BaseModel):
+    """Payload forwarded to Alpaca Broker account creation in sandbox only."""
+    contact: dict
+    identity: dict
+    disclosures: dict
+    agreements: list[dict] = Field(default_factory=list)
+
+
+class BrokerOrderRequest(BaseModel):
+    """Minimal order payload for sandbox validation."""
+    symbol: str = Field(..., min_length=1, max_length=16)
+    qty: str = Field(default="1")
+    side: str = Field(default="buy", pattern="^(buy|sell)$")
+    type: str = Field(default="market", pattern="^(market|limit|stop|stop_limit|trailing_stop)$")
+    time_in_force: str = Field(default="day", pattern="^(day|gtc|opg|cls|ioc|fok)$")
+    limit_price: str | None = None
+    stop_price: str | None = None
+    client_order_id: str | None = None
+
+
+@app.post("/api/v1/broker/accounts", status_code=status.HTTP_201_CREATED)
+async def broker_create_account(payload: BrokerAccountCreateRequest):
+    """Create a Broker sandbox account; disabled automatically outside paper mode."""
+    if not settings.alpaca_paper:
+        raise HTTPException(status_code=403, detail="Account creation is sandbox-only")
+    from market_gateway.alpaca_broker import alpaca_broker_client
+    try:
+        return await alpaca_broker_client.create_account(payload.model_dump(exclude_none=True))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.post("/api/v1/broker/accounts/{account_id}/orders", status_code=status.HTTP_201_CREATED)
+async def broker_create_order(account_id: str, order: BrokerOrderRequest):
+    """Submit an order to the Alpaca Broker sandbox only."""
+    if not settings.alpaca_paper:
+        raise HTTPException(status_code=403, detail="Orders are sandbox-only")
+    from market_gateway.alpaca_broker import alpaca_broker_client
+    try:
+        return await alpaca_broker_client.create_order(
+            account_id,
+            order.model_dump(exclude_none=True),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/v1/broker/accounts/{account_id}")
+async def broker_get_account(account_id: str):
+    """Read one Broker sandbox account."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+    try:
+        return await alpaca_broker_client.get_account(account_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/v1/broker/accounts/{account_id}/orders")
+async def broker_list_orders(account_id: str):
+    """List orders for one Broker sandbox account."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+    try:
+        return await alpaca_broker_client.list_orders(account_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/api/v1/broker/assets")
 async def broker_list_assets():
     """List tradable assets from the Alpaca Broker API."""
