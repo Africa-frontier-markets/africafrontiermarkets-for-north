@@ -47,11 +47,11 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=30, ge=0, le=100)
     db_pool_timeout: int = Field(default=30, ge=5, le=120)
 
-    redis_url: str = Field(..., pattern=r"^redis://")
+    redis_url: str = Field(..., pattern=r"^rediss?://")
     redis_pool_size: int = Field(default=50, ge=10, le=200)
 
     # Redis
-    redis_url: str = Field(..., pattern=r"^redis://")
+    redis_url: str = Field(..., pattern=r"^rediss?://")
     redis_pool_size: int = Field(default=50, ge=10, le=200)
 
     # Payment Providers
