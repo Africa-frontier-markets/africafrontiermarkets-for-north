@@ -145,3 +145,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# Backwards-compatible module-level settings used by integrations.
+settings = get_settings()
