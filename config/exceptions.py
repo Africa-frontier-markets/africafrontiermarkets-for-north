@@ -118,21 +118,3 @@ class APIKeyExpiredError(AFMException):
     status_code = 401
     error_code = "API_KEY_EXPIRED"
     detail = "API key has expired"
-
-
-class LedgerError(AFMException):
-    status_code = 500
-    error_code = "LEDGER_ERROR"
-    detail = "Ledger operation failed"
-
-
-class ReconciliationError(AFMException):
-    status_code = 500
-    error_code = "RECONCILIATION_ERROR"
-    detail = "Reconciliation failed"
-
-
-class ComplianceHoldError(AFMException):
-    status_code = 409
-    error_code = "COMPLIANCE_HOLD"
-    detail = "Operation blocked by compliance review"
