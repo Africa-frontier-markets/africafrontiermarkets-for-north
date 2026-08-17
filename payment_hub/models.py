@@ -65,6 +65,7 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
+    oauth_subject = Column(String(128), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255))
     full_name = Column(String(255))
     phone = Column(String(50))

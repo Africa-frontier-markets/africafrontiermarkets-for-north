@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=15, ge=5, le=60)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
+    mobile_oauth_exchange_secret: str | None = Field(default=None, min_length=48)
 
     @field_validator("secret_key")
     @classmethod
