@@ -3,16 +3,17 @@ AFM API Gateway — FastAPI with real payment endpoint
 """
 
 import asyncio
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from typing import AsyncGenerator
 
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -36,6 +37,8 @@ from payment_hub.models import BrokerAccountLink
 from api_gateway.auth import router as auth_router
 
 logger = configure_logging()
+_instrument_cache: dict[str, tuple[float, list[dict]]] = {}
+_INSTRUMENT_CACHE_TTL_SECONDS = 300
 
 class TransactionType(str, Enum):
     DEPOSIT = "deposit"
@@ -315,23 +318,76 @@ async def broker_list_orders(account_id: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@app.get("/api/v1/broker/assets")
-async def broker_list_assets(asset_class: str = "us_equity"):
-    """List active, tradable instruments validated by the Alpaca Broker API."""
+async def get_tradable_broker_assets(asset_class: str | None = None) -> list[dict]:
+    """Fetch and cache active, tradable Broker API assets for a short interval."""
     from market_gateway.alpaca_broker import alpaca_broker_client
 
+    cache_key = asset_class or "all"
+    cached = _instrument_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _INSTRUMENT_CACHE_TTL_SECONDS:
+        return cached[1]
     try:
-        assets = await alpaca_broker_client.list_assets(status="active", asset_class=asset_class)
+        params = {"status": "active"}
+        if asset_class:
+            params["asset_class"] = asset_class
+        assets = await alpaca_broker_client.list_assets(**params)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
     tradable_assets = [asset for asset in assets if asset.get("tradable") is True] if isinstance(assets, list) else []
-    return {"count": len(tradable_assets), "asset_class": asset_class, "assets": tradable_assets}
+    tradable_assets.sort(key=lambda asset: str(asset.get("symbol") or ""))
+    _instrument_cache[cache_key] = (time.monotonic(), tradable_assets)
+    return tradable_assets
+
+
+def paginate_instruments(assets: list[dict], query: str, page: int, page_size: int) -> tuple[list[dict], int]:
+    normalized_query = query.strip().lower()
+    if normalized_query:
+        assets = [
+            asset for asset in assets
+            if normalized_query in str(asset.get("symbol") or "").lower()
+            or normalized_query in str(asset.get("name") or "").lower()
+            or normalized_query in str(asset.get("exchange") or "").lower()
+        ]
+    total_count = len(assets)
+    offset = (page - 1) * page_size
+    return assets[offset : offset + page_size], total_count
+
+
+@app.get("/api/v1/broker/assets")
+async def broker_list_assets(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
+    """List active, tradable Alpaca instruments through a filtered, paginated response."""
+    tradable_assets = await get_tradable_broker_assets(asset_class)
+    assets, total_count = paginate_instruments(tradable_assets, query, page, page_size)
+    return {
+        "count": len(assets),
+        "total_count": total_count,
+        "asset_class": asset_class or "all",
+        "page": page,
+        "page_size": page_size,
+        "has_more": page * page_size < total_count,
+        "assets": assets,
+    }
 
 
 @app.get("/api/v1/broker/instruments")
-async def broker_list_instruments(asset_class: str = "us_equity"):
+async def broker_list_instruments(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
     """Frontend-friendly alias for the validated tradable instrument list."""
-    return await broker_list_assets(asset_class=asset_class)
+    return await broker_list_assets(
+        asset_class=asset_class,
+        query=query,
+        page=page,
+        page_size=page_size,
+    )
 
 
 class BrokerAccountLinkRequest(BaseModel):
@@ -405,6 +461,81 @@ async def get_portfolio(
         "account": account,
         "positions": positions if isinstance(positions, list) else [],
     }
+
+
+def normalize_broker_activity(activity: dict) -> dict:
+    """Expose a stable, non-sensitive representation of one Alpaca account activity."""
+    activity_type = str(activity.get("activity_type") or activity.get("type") or "OTHER")
+    symbol = activity.get("symbol")
+    side = activity.get("side")
+    amount = activity.get("net_amount")
+
+    if amount in (None, ""):
+        try:
+            amount_decimal = Decimal(str(activity.get("price"))) * Decimal(str(activity.get("qty")))
+            if side == "buy":
+                amount_decimal = -amount_decimal
+            amount = f"{amount_decimal:.2f}"
+        except (InvalidOperation, TypeError, ValueError):
+            amount = None
+
+    occurred_at = activity.get("transaction_time") or activity.get("created_at") or activity.get("date")
+    description = activity.get("description")
+    if not description:
+        if activity_type == "FILL" and symbol:
+            description = f"{str(side or 'trade').capitalize()} {symbol}"
+        elif symbol:
+            description = f"{activity_type} · {symbol}"
+        else:
+            description = activity_type
+
+    return {
+        "id": str(activity.get("id") or ""),
+        "activity_type": activity_type,
+        "symbol": symbol,
+        "side": side,
+        "quantity": activity.get("qty"),
+        "amount": str(amount) if amount not in (None, "") else None,
+        "occurred_at": occurred_at,
+        "description": description,
+    }
+
+
+def build_activity_page(account_id: str, activities: list[dict], limit: int) -> dict:
+    transactions = [normalize_broker_activity(activity) for activity in activities if isinstance(activity, dict)]
+    next_page_token = transactions[-1]["id"] if len(transactions) == limit and transactions else None
+    return {
+        "account_id": account_id,
+        "transactions": transactions,
+        "count": len(transactions),
+        "next_page_token": next_page_token,
+    }
+
+
+@app.get("/api/v1/portfolio/transactions")
+async def get_portfolio_transactions(
+    limit: int = Query(default=50, ge=1, le=100),
+    page_token: str | None = Query(default=None, min_length=1, max_length=300),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return recent real Broker API activities for the authenticated linked account."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    link = await get_linked_broker_account(user_id, db)
+    try:
+        params = {"direction": "desc", "page_size": limit}
+        if page_token:
+            params["page_token"] = page_token
+        activities = await alpaca_broker_client.list_account_activities(link.alpaca_account_id, **params)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to load broker activities: {exc}")
+
+    return build_activity_page(
+        link.alpaca_account_id,
+        activities if isinstance(activities, list) else [],
+        limit,
+    )
 
 
 async def get_current_user(request: Request):

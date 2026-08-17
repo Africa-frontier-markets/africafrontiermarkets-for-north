@@ -97,6 +97,14 @@ class AlpacaBrokerClient:
     async def get_account_balance(self, account_id: str) -> Any:
         return await self.request("GET", f"/v1/accounts/{account_id}")
 
+    async def list_account_activities(self, account_id: str, **params: Any) -> Any:
+        """Return real account activities for one linked Broker API account."""
+        return await self.request(
+            "GET",
+            "/v1/accounts/activities",
+            params={"account_id": account_id, **params},
+        )
+
     async def create_order(self, account_id: str, order: dict[str, Any]) -> Any:
         return await self.request("POST", f"/v1/trading/accounts/{account_id}/orders", json=order)
 
