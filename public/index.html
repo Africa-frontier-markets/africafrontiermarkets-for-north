@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AfricaFrontierMarkets — Une plateforme de marchés financiers panafricaine, en construction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FCFAF8;
+    --surface:#FFFFFF;
+    --tint:#F7EEF0;
+    --tint-2:#FBF3EC;
+    --deep:#8C5A6B;
+    --deep-2:#734A59;
+    --ink:#464646;
+    --ink-2:#2E2E2E;
+    --soft:#8A8480;
+    --border:#E8E0DC;
+    --rose:#C48A9A;
+    --rose-line:#DDB6C0;
+    --good:#3F8F6F;
+    --good-bg:#E9F5EE;
+    --warn:#B08A2E;
+    --warn-bg:#FBF3DA;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:'Inter',sans-serif;line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.serif{font-family:'Lora',serif;color:var(--ink-2);}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;text-decoration:none;}
+
+  /* ---------- Top nav ---------- */
+  header.topnav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(252,250,248,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{
+    max-width:1180px;margin:0 auto;padding:14px 28px;
+    display:flex;align-items:center;justify-content:space-between;gap:20px;
+  }
+  .logo{display:flex;align-items:center;gap:9px;font-family:'Lora',serif;font-weight:600;font-size:18px;color:var(--ink-2);}
+  .logo .mark{
+    width:30px;height:30px;border-radius:8px;background:var(--deep);
+    color:#fff;display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;font-family:'Inter',sans-serif;
+  }
+  nav.tabs{display:flex;gap:4px;flex-wrap:wrap;}
+  nav.tabs button{
+    all:unset;cursor:pointer;padding:8px 14px;border-radius:20px;
+    font-size:13.5px;color:var(--soft);font-weight:500;
+  }
+  nav.tabs button:hover{background:var(--tint);color:var(--ink-2);}
+  nav.tabs button.active{background:var(--deep);color:#fff;}
+  @media(max-width:920px){.nav-inner{flex-direction:column;align-items:flex-start;} nav.tabs{width:100%;}}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:48px 28px 80px;}
+  .eyebrow{
+    display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--rose);border:1px solid var(--rose-line);padding:5px 12px;border-radius:20px;
+    margin-bottom:18px;font-weight:600;
+  }
+  h1.page-title{font-size:38px;font-weight:600;margin:0 0 14px;line-height:1.18;}
+  p.lede{font-size:16px;color:var(--soft);max-width:760px;margin:0 0 34px;}
+  h2.section-title{font-size:26px;font-weight:600;margin:0 0 8px;}
+  p.section-sub{color:var(--soft);font-size:14.5px;max-width:700px;margin:0 0 26px;}
+
+  .grid{display:grid;gap:18px;}
+  .grid.c2{grid-template-columns:1fr 1fr;}
+  .grid.c3{grid-template-columns:repeat(3,1fr);}
+  .grid.c4{grid-template-columns:repeat(4,1fr);}
+  @media(max-width:900px){.grid.c2,.grid.c3,.grid.c4{grid-template-columns:1fr;}}
+
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:24px 26px;
+  }
+  .card.tint{background:var(--tint);border-color:var(--rose-line);}
+  .card.deep{background:var(--deep);color:#fff;border:none;}
+  .card.deep h3{color:#fff;}
+  .card h3{margin:0 0 10px;font-size:16px;}
+  .card p{margin:0;color:var(--soft);font-size:14px;}
+  .card.deep p{color:#F1DEE3;}
+
+  .badge-row{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 0;}
+  .chip{
+    display:flex;align-items:center;gap:10px;background:var(--tint);
+    border:1px solid var(--rose-line);border-radius:12px;padding:14px 18px;flex:1;min-width:220px;
+  }
+  .chip .ic{font-size:20px;}
+  .chip .t{font-weight:600;color:var(--ink-2);font-size:14.5px;}
+  .chip .d{font-size:12px;color:var(--soft);}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;padding:10px 12px;color:var(--soft);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);}
+  td{padding:11px 12px;border-bottom:1px solid #F0EAE7;}
+  tr:last-child td{border-bottom:none;}
+  .ok{color:var(--good);font-weight:600;}
+  .mid{color:var(--warn);font-weight:600;}
+  .no{color:#B85C5C;font-weight:600;}
+
+  .divider{height:1px;background:var(--border);margin:52px 0;}
+
+  /* ---------- API cards ---------- */
+  .api-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    overflow:hidden;margin-bottom:20px;
+  }
+  .api-head{
+    display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--tint);
+    border-bottom:1px solid var(--rose-line);flex-wrap:wrap;
+  }
+  .method{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+    padding:4px 10px;border-radius:6px;color:#fff;
+  }
+  .method.post{background:#8C5A6B;}
+  .method.get{background:#3F8F6F;}
+  .endpoint{font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--ink-2);}
+  .api-name{margin-left:auto;font-weight:600;font-size:14px;color:var(--ink-2);}
+  .api-body{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:800px){.api-body{grid-template-columns:1fr;}}
+  .api-body h4{margin:0 0 8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);}
+  pre.code{
+    margin:0;background:#2E2620;color:#F3E9E2;border-radius:10px;padding:14px 16px;
+    font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.6;overflow-x:auto;
+  }
+  .api-meta{grid-column:1 / -1;display:flex;gap:22px;flex-wrap:wrap;padding-top:6px;border-top:1px solid #F0EAE7;margin-top:4px;font-size:12.5px;color:var(--soft);}
+  .api-meta strong{color:var(--ink-2);}
+
+  .partner-grid{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px;}
+  .partner{
+    font-size:12.5px;padding:6px 12px;border-radius:20px;background:#fff;
+    border:1px solid var(--border);color:var(--ink);
+  }
+
+  footer{border-top:1px solid var(--border);padding:36px 28px;text-align:center;color:var(--soft);font-size:12.5px;}
+  footer strong{color:var(--ink-2);}
+
+  .roadmap-item{display:flex;gap:16px;padding:16px 0;border-bottom:1px solid #F0EAE7;}
+  .roadmap-item:last-child{border-bottom:none;}
+  .roadmap-num{
+    width:30px;height:30px;flex-shrink:0;border-radius:50%;background:var(--tint);
+    border:1px solid var(--rose-line);display:flex;align-items:center;justify-content:center;
+    font-family:'Lora',serif;font-weight:600;color:var(--deep);font-size:14px;
+  }
+  .roadmap-num.done{background:var(--good-bg);border-color:var(--good);color:var(--good);}
+  .roadmap-item h4{margin:0 0 3px;font-size:14.5px;color:var(--ink-2);}
+  .roadmap-item p{margin:0;font-size:13px;color:var(--soft);}
+
+  .callout{
+    background:var(--warn-bg);border:1px solid #E3D18C;border-radius:12px;
+    padding:14px 18px;font-size:13px;color:#6B551E;display:flex;gap:10px;align-items:flex-start;
+  }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="nav-inner">
+    <div class="logo"><span class="mark">AFM</span> AfricaFrontierMarkets</div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="plateforme" class="active">Plateforme</button>
+      <button data-tab="frontierpay">FrontierPay</button>
+      <button data-tab="easymarket">EasyMarket</button>
+      <button data-tab="fintech">Fintech &amp; PSP</button>
+      <button data-tab="levee">Vision &amp; feuille de route</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main"></main>
+
+<footer>
+  <strong>AfricaFrontierMarkets</strong> — Douala, Cameroun · MEL Invests · Document de travail, en construction<br>
+  invest@africafrontiermarkets.com
+</footer>
+
+<script>
+/* =========================================================================
+   CONTENU
+   ========================================================================= */
+const PSP_FRONTIERPAY = ["Visa Direct","Xendit","Payoneer","MTN MoMo","Orange Money","Wave","Tranglo"];
+const BROKERS_EASYMARKET = ["Interactive Brokers","Saxo Bank","Inopay (BRVM)"];
+
+const ALL_MARKETS = [
+  {code:"BRVM",name:"BRVM",region:"Afrique de l'Ouest",currency:"XOF"},
+  {code:"NSE_NG",name:"NSE Nigeria",region:"Afrique de l'Ouest",currency:"NGN"},
+  {code:"GSE",name:"Ghana Stock Exchange",region:"Afrique de l'Ouest",currency:"GHS"},
+  {code:"BRV_CV",name:"BRV Cap-Vert",region:"Afrique de l'Ouest",currency:"CVE"},
+  {code:"NSE_KE",name:"NSE Kenya",region:"Afrique de l'Est",currency:"KES"},
+  {code:"DSE",name:"Dar es Salaam SE",region:"Afrique de l'Est",currency:"TZS"},
+  {code:"USE",name:"Uganda SE",region:"Afrique de l'Est",currency:"UGX"},
+  {code:"RSE",name:"Rwanda SE",region:"Afrique de l'Est",currency:"RWF"},
+  {code:"EGX",name:"Egypt Exchange",region:"Afrique du Nord",currency:"EGP"},
+  {code:"BSE_MA",name:"Casablanca SE",region:"Afrique du Nord",currency:"MAD"},
+  {code:"BVMT",name:"Tunis SE",region:"Afrique du Nord",currency:"TND"},
+  {code:"JSE",name:"Johannesburg SE",region:"Afrique australe",currency:"ZAR"},
+  {code:"LUSE",name:"Lusaka SE",region:"Afrique australe",currency:"ZMW"},
+  {code:"BSE_BW",name:"Botswana SE",region:"Afrique australe",currency:"BWP"},
+  {code:"NYSE",name:"New York SE",region:"Amériques",currency:"USD"},
+  {code:"NASDAQ",name:"NASDAQ",region:"Amériques",currency:"USD"},
+  {code:"LSE",name:"London SE",region:"Europe",currency:"GBP"},
+  {code:"EURONEXT",name:"Euronext",region:"Europe",currency:"EUR"},
+  {code:"XETRA",name:"Deutsche Börse",region:"Europe",currency:"EUR"},
+  {code:"TSE",name:"Tokyo SE",region:"Asie",currency:"JPY"},
+  {code:"SSE",name:"Shanghai SE",region:"Asie",currency:"CNY"},
+];
+
+function chip(ic,t,d){return `<div class="chip"><span class="ic">${ic}</span><div><div class="t">${t}</div><div class="d">${d}</div></div></div>`;}
+function partners(list){return `<div class="partner-grid">${list.map(p=>`<span class="partner">${p}</span>`).join('')}</div>`;}
+function marketsTable(){
+  const regions = [...new Set(ALL_MARKETS.map(m=>m.region))];
+  let rows = '';
+  for(const r of regions){
+    rows += `<tr style="background:var(--tint);"><td colspan="3" style="font-weight:600;color:var(--deep);font-size:12px;text-transform:uppercase;letter-spacing:.04em;">${r}</td></tr>`;
+    for(const m of ALL_MARKETS.filter(x=>x.region===r)){
+      rows += `<tr><td>${m.name}</td><td class="mono small">${m.code}</td><td class="mono">${m.currency}</td></tr>`;
+    }
+  }
+  return `<div class="card" style="padding:0;overflow:hidden;">
+    <table><thead><tr><th>Marché</th><th>Code</th><th>Devise</th></tr></thead><tbody>${rows}</tbody></table>
+  </div>
+  <p class="section-sub" style="margin-top:12px;">Couverture de marché visée par la feuille de route d'intégration. Aucune connectivité d'exécution en direct n'est confirmée à ce jour sur ces places — voir l'onglet Fintech &amp; PSP pour le principe de fonctionnement prévu.</p>`;
+}
+
+/* ---------- PLATEFORME ---------- */
+function renderPlateforme(){
+  return `
+  <span class="eyebrow">Document de travail — confidentiel</span>
+  <h1 class="page-title">Une plateforme de marchés financiers panafricaine, en construction</h1>
+  <p class="lede">AfricaFrontierMarkets vise à réunir en un seul compte le trading d'actions internationales, les paiements multi-devises en XAF et un conseiller financier IA — conçue pour l'Afrique, connectée au monde. La plateforme est en développement actif ; ce document présente la vision et l'architecture cible, pas un état des lieux de traction commerciale.</p>
+
+  <div class="badge-row">
+    ${chip('📈','EasyMarket','Trading international — en développement')}
+    ${chip('💳','FrontierPay','Paiements multi-devises XAF — en développement')}
+    ${chip('🤖','AI Advisory','Conseil propulsé par IA — en développement')}
+  </div>
+
+  <div class="divider"></div>
+
+  <span class="eyebrow">Le problème</span>
+  <h2 class="section-title">L'accès aux marchés financiers internationaux reste limité pour une large partie de la population africaine</h2>
+  <p class="section-sub">Trois verrous structurels freinent aujourd'hui l'accès aux marchés, la circulation des capitaux et la création de richesse à l'échelle du continent.</p>
+  <div class="grid c3">
+    <div class="card"><h3>🚫 Accès limité aux marchés internationaux</h3><p>Peu de brokers locaux régulés permettent de trader des actions américaines ou européennes depuis la zone CEMAC/UEMOA en devise locale. Les plateformes internationales grand public appliquent des critères de KYC qui excluent une large part des utilisateurs africains.</p></div>
+    <div class="card"><h3>💸 Transferts intra-africains coûteux</h3><p>Les frais bancaires et les spreads de change appliqués aux transferts transfrontaliers en Afrique restent élevés et souvent peu transparents, ce qui freine le commerce intra-régional.</p></div>
+    <div class="card"><h3>🏢 PME contraintes par le cash</h3><p>Une partie significative des PME camerounaises et de la zone CEMAC peine à recevoir des paiements en devises étrangères de façon simple et sécurisée, ce qui maintient une dépendance au règlement en espèces pour les transactions B2B.</p></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <span class="eyebrow">La solution visée</span>
+  <h2 class="section-title">Une super-app financière africaine</h2>
+  <p class="section-sub">Trois modules pensés pour fonctionner ensemble, autour d'un compte unique — décrits ci-dessous dans leur état actuel de développement, module par module.</p>
+  <div class="grid c3">
+    <div class="card tint"><h3>📈 EasyMarket — Trading</h3><p>Trading d'actions internationales et accès à la BRVM. Portefeuille valorisé en temps réel en USD. Module en développement — voir l'onglet EasyMarket pour le détail.</p></div>
+    <div class="card tint"><h3>💳 FrontierPay — Paiements</h3><p>Paiements XAF vers devises internationales, appuyés sur des rails de paiement mobile money et bancaires. Module en développement — voir l'onglet FrontierPay pour le détail.</p></div>
+    <div class="card tint"><h3>🤖 AI Advisory — Intelligence</h3><p>Assistant IA intégré pour l'analyse de portefeuille et le conseil personnalisé, en français et en anglais. Module en développement.</p></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <span class="eyebrow">Positionnement</span>
+  <h2 class="section-title">Une combinaison rare sur le marché</h2>
+  <p class="section-sub">Peu d'acteurs, globaux ou locaux, combinent aujourd'hui le trading international, les paiements multi-devises XAF et un conseil assisté par IA dans une seule application pensée pour l'Afrique centrale. C'est l'axe de différenciation que nous construisons — il reste à démontrer à l'usage, pas encore acquis.</p>
+  `;
+}
+
+/* ---------- FRONTIERPAY ---------- */
+function renderFrontierPay(){
+  return `
+  <span class="eyebrow">Module 1 · Paiements — en développement</span>
+  <h1 class="page-title">FrontierPay — les paiements multi-devises pensés pour l'Afrique</h1>
+  <p class="lede">FrontierPay vise à faire circuler l'argent entre le XAF et les grandes devises internationales à travers des corridors dédiés, avec des frais annoncés avant chaque transaction et une sélection automatique du mode d'acheminement pour chaque paire de devises. Le module est en cours de développement ; les corridors listés ci-dessous décrivent la couverture visée, pas un service actif à ce jour.</p>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Ce que le module doit couvrir</h2>
+  <div class="grid c2">
+    <div class="card"><h3>💱 Moteur de change XAF</h3><p>Conversion XAF ⇄ USD ⇄ EUR ⇄ GBP, avec extension envisagée vers l'AED, le SAR et le MYR. Le spread appliqué serait toujours affiché avant validation.</p></div>
+    <div class="card"><h3>🔗 Liens de paiement</h3><p>Génération de liens de paiement sécurisés, avec expiration automatique et protection anti-rejeu — pour partager, recevoir et convertir des fonds sans compte professionnel.</p></div>
+    <div class="card"><h3>🏦 Règlement automatisé</h3><p>Règlement automatisé de la commission MEL Investment Banking sur chaque transaction, sans intervention manuelle.</p></div>
+    <div class="card"><h3>📲 Mobile Money natif</h3><p>Intégration envisagée avec les portefeuilles mobiles locaux (MTN Mobile Money, Orange Money) pour les dépôts et retraits, en complément des rails internationaux.</p></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Corridors de paiement visés</h2>
+  <p class="section-sub">Chaque corridor associe une paire de devises à un cas d'usage. Le prestataire retenu pour chaque transaction serait sélectionné automatiquement selon des critères de coût et de disponibilité — voir l'onglet Fintech &amp; PSP pour le principe de fonctionnement prévu. Aucun de ces corridors n'est activé en production à ce jour.</p>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead><tr><th>Corridor</th><th>Devises</th><th>Cas d'usage envisagé</th></tr></thead>
+      <tbody>
+        <tr><td>Cameroun → États-Unis</td><td class="mono">XAF → USD</td><td>Épargne, investissement, règlement fournisseurs</td></tr>
+        <tr><td>Cameroun → Zone Euro</td><td class="mono">XAF → EUR</td><td>Règlement fournisseurs, transferts familiaux</td></tr>
+        <tr><td>Cameroun → Royaume-Uni</td><td class="mono">XAF → GBP</td><td>Frais de scolarité, transferts familiaux</td></tr>
+        <tr><td>Cameroun → Émirats arabes unis</td><td class="mono">XAF → AED</td><td>Commerce et import de marchandises</td></tr>
+        <tr><td>Cameroun → Arabie saoudite</td><td class="mono">XAF → SAR</td><td>Commerce et import de marchandises</td></tr>
+        <tr><td>Cameroun → Malaisie</td><td class="mono">XAF → MYR</td><td>Commerce et import de marchandises</td></tr>
+        <tr><td>Zone CEMAC ↔ Zone UEMOA</td><td class="mono">XAF ↔ XOF</td><td>Commerce intra-régional, paiements B2B</td></tr>
+        <tr><td>Cameroun ↔ Nigeria</td><td class="mono">XAF ↔ NGN</td><td>Commerce transfrontalier</td></tr>
+        <tr><td>Cameroun ↔ Ghana</td><td class="mono">XAF ↔ GHS</td><td>Commerce transfrontalier</td></tr>
+        <tr><td>Mobile Money local</td><td class="mono">XAF (MTN · Orange)</td><td>Dépôt et retrait de proximité</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Rails de paiement envisagés</h2>
+  <p class="section-sub">Prestataires identifiés pour une intégration future. Leur présence dans cette liste ne constitue pas une confirmation de partenariat actif ou signé.</p>
+  ${partners(PSP_FRONTIERPAY)}
+  `;
+}
+
+/* ---------- EASYMARKET ---------- */
+function renderEasyMarket(){
+  return `
+  <span class="eyebrow">Module 2 · Trading — en développement</span>
+  <h1 class="page-title">EasyMarket — investir sur les marchés mondiaux depuis Douala</h1>
+  <p class="lede">L'objectif du module est de donner un accès à plusieurs places boursières à travers l'Afrique, l'Europe, l'Amérique et l'Asie, avec un portefeuille valorisé en temps réel, sans compte bancaire à l'étranger. Le module est en développement ; aucune connectivité d'exécution en direct n'est confirmée à ce jour.</p>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Ce que le module doit couvrir</h2>
+  <div class="grid c2">
+    <div class="card"><h3>📊 Actions internationales</h3><p>Trading envisagé d'actions américaines, européennes et asiatiques, ainsi que de cryptoactifs. Ordres au marché et à cours limité, exécutés via des brokers partenaires selon la place de cotation.</p></div>
+    <div class="card"><h3>🌍 Ancrage africain</h3><p>Accès envisagé à la Bourse Régionale des Valeurs Mobilières (BRVM) pour les titres cotés en zone UEMOA, réglés en XOF — avec d'autres places du continent en feuille de route.</p></div>
+    <div class="card"><h3>💼 Portefeuille en temps réel</h3><p>Suivi du P&amp;L latent et réalisé, valorisation consolidée en USD, quel que soit le marché d'origine des positions.</p></div>
+    <div class="card"><h3>🤖 Conseil IA intégré</h3><p>Un assistant IA analyserait le portefeuille et proposerait des recommandations personnalisées, en français et en anglais.</p></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Couverture de marché visée</h2>
+  <p class="section-sub">La couverture cible d'EasyMarket, du socle prioritaire à la feuille de route panafricaine.</p>
+  ${marketsTable()}
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Brokers envisagés</h2>
+  <p class="section-sub">Partenaires d'exécution identifiés pour une intégration future. Leur présence dans cette liste ne constitue pas une confirmation de partenariat actif ou signé.</p>
+  ${partners(BROKERS_EASYMARKET)}
+  `;
+}
+
+/* ---------- FINTECH & PSP (principe de fonctionnement, sans détail partenaire) ---------- */
+function renderFintech(){
+  return `
+  <span class="eyebrow">Architecture technique cible</span>
+  <h1 class="page-title">Fintech &amp; PSP — principe de fonctionnement envisagé</h1>
+  <p class="lede">Chaque module s'appuierait sur deux API dédiées : une API de mouvement de fonds ou d'exécution, et une API de données. Le choix du prestataire technique (PSP pour FrontierPay, broker pour EasyMarket) serait arbitré automatiquement par la plateforme selon des critères de coût et de disponibilité — l'utilisateur final n'aurait jamais à le sélectionner lui-même. Ce qui suit décrit une architecture cible en cours de construction, pas un système déjà validé en production.</p>
+  <div class="callout" style="margin-bottom:32px;">
+    🔒 <span>Par confidentialité contractuelle, l'identité des partenaires effectivement intégrés, l'architecture de routage exacte et les spécifications techniques complètes ne sont pas publiées ici.</span>
+  </div>
+
+  <h2 class="section-title" style="margin-top:8px;">FrontierPay — 2 API envisagées</h2>
+
+  <div class="api-card">
+    <div class="api-head">
+      <span class="method post">API</span>
+      <span class="api-name">Paiements — initiation et acheminement des fonds</span>
+    </div>
+    <div class="api-body">
+      <div style="grid-column:1 / -1;">
+        <h4>Processus envisagé</h4>
+        <div class="card" style="padding:16px 20px;">
+          <div class="roadmap-item"><div class="roadmap-num">1</div><div><h4>Initiation</h4><p>Le client transmet le montant, la devise source, la devise cible et le corridor concerné.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">2</div><div><h4>Vérification &amp; conformité</h4><p>Contrôle KYC/AML, criblage sanctions, et validation d'une clé d'idempotence unique pour éviter tout doublon.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">3</div><div><h4>Sélection du mode d'acheminement</h4><p>Un moteur interne déterminerait automatiquement le mode d'acheminement le plus adapté au corridor demandé.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">4</div><div><h4>Exécution &amp; confirmation</h4><p>Le paiement serait exécuté, confirmé de façon asynchrone, puis un reçu numérique généré pour le client.</p></div></div>
+        </div>
+      </div>
+      <div class="api-meta">
+        <span><strong>Auth prévue</strong> : jeton d'accès sécurisé (Bearer)</span>
+        <span><strong>Principe de conception</strong> : idempotence stricte visant à empêcher qu'une transaction soit exécutée deux fois</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="api-card">
+    <div class="api-head">
+      <span class="method get">API</span>
+      <span class="api-name">Change — cotation et conversion de devises</span>
+    </div>
+    <div class="api-body">
+      <div style="grid-column:1 / -1;">
+        <h4>Processus envisagé</h4>
+        <div class="card" style="padding:16px 20px;">
+          <div class="roadmap-item"><div class="roadmap-num">1</div><div><h4>Demande de cotation</h4><p>Le client indique la devise source, la devise cible et le montant à convertir.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">2</div><div><h4>Calcul du taux</h4><p>Le taux de référence serait combiné au spread applicable pour produire une cotation transparente.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">3</div><div><h4>Verrouillage temporaire</h4><p>La cotation serait garantie pendant une fenêtre de validité courte, affichée avant confirmation.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">4</div><div><h4>Conversion &amp; journalisation</h4><p>La conversion serait exécutée au taux verrouillé et journalisée à des fins d'audit et de conformité.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="section-title">EasyMarket — 2 API envisagées</h2>
+
+  <div class="api-card">
+    <div class="api-head">
+      <span class="method post">API</span>
+      <span class="api-name">Ordres — passage et exécution des ordres de trading</span>
+    </div>
+    <div class="api-body">
+      <div style="grid-column:1 / -1;">
+        <h4>Processus envisagé</h4>
+        <div class="card" style="padding:16px 20px;">
+          <div class="roadmap-item"><div class="roadmap-num">1</div><div><h4>Soumission de l'ordre</h4><p>Le client précise le marché, le titre, la quantité et le type d'ordre (marché ou limite).</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">2</div><div><h4>Contrôle de recevabilité</h4><p>Vérification que le marché visé est ouvert et que les fonds ou positions disponibles sont suffisants.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">3</div><div><h4>Acheminement vers l'exécution</h4><p>L'ordre serait acheminé vers le canal d'exécution adapté à la place de cotation concernée.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">4</div><div><h4>Confirmation &amp; mise à jour</h4><p>L'exécution serait confirmée et le portefeuille du client mis à jour.</p></div></div>
+        </div>
+      </div>
+      <div class="api-meta">
+        <span><strong>Auth prévue</strong> : jeton d'accès sécurisé (Bearer) + KYC validé</span>
+        <span><strong>Contrôle</strong> : ordre automatiquement rejeté si le marché visé est fermé</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="api-card">
+    <div class="api-head">
+      <span class="method get">API</span>
+      <span class="api-name">Marché &amp; portefeuille — données et valorisation</span>
+    </div>
+    <div class="api-body">
+      <div style="grid-column:1 / -1;">
+        <h4>Processus envisagé</h4>
+        <div class="card" style="padding:16px 20px;">
+          <div class="roadmap-item"><div class="roadmap-num">1</div><div><h4>Requête de données</h4><p>Le client demande une cotation de marché ou l'état de son portefeuille.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">2</div><div><h4>Agrégation</h4><p>Les cotations et positions issues des différents marchés seraient consolidées.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">3</div><div><h4>Valorisation</h4><p>Les positions multi-devises seraient converties vers une valeur de référence unique, en USD.</p></div></div>
+          <div class="roadmap-item"><div class="roadmap-num">4</div><div><h4>Restitution</h4><p>Les données consolidées seraient renvoyées au client, avec rafraîchissement pendant les heures de marché.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Socle technique</h2>
+  <div class="grid c2">
+    <div class="card"><h3>Infrastructure</h3><p><strong>Backend</strong> : Python · FastAPI · PostgreSQL · Redis<br><strong>Approche</strong> : microservices, event-driven, en développement itératif</p></div>
+    <div class="card"><h3>Sécurité — principes de conception</h3><p>Authentification par jeton, signature HMAC pour les webhooks, journal d'audit immuable pour les mouvements de fonds, conformité KYC/AML visée sous supervision COBAC.</p></div>
+  </div>
+  <div class="callout" style="margin-top:18px;">
+    ℹ️ <span>Statut réel : plateforme en développement actif, par étapes. Le dossier d'agrément COBAC est en préparation. Aucune annonce de volume, de taux de succès ou de nombre de partenaires actifs n'est faite tant qu'elle n'est pas vérifiable.</span>
+  </div>
+  `;
+}
+
+/* ---------- VISION & FEUILLE DE ROUTE ---------- */
+function renderLevee(){
+  return `
+  <span class="eyebrow">Contexte de marché</span>
+  <h1 class="page-title">Un marché en croissance structurelle en Afrique subsaharienne</h1>
+  <p class="lede">Le secteur fintech, wealthtech et paiements B2B en Afrique centrale et de l'Ouest connaît une croissance soutenue. AfricaFrontierMarkets se positionne pour s'y développer, par étapes vérifiables plutôt que par anticipation chiffrée.</p>
+
+  <div class="divider"></div>
+
+  <h2 class="section-title">Feuille de route</h2>
+  <p class="section-sub">Chaque étape est conditionnée à l'obtention des agréments réglementaires locaux et à la validation technique des étapes précédentes. Nous avançons au fur et à mesure et ne communiquons pas d'échéance ferme tant qu'une étape n'est pas atteinte.</p>
+  <div class="card">
+    <div class="roadmap-item">
+      <div class="roadmap-num">1</div>
+      <div><h4>Développement de la plateforme</h4><p>Construction itérative des modules EasyMarket et FrontierPay, du ledger financier et de l'infrastructure de sécurité.</p></div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-num">2</div>
+      <div><h4>Agrément &amp; conformité</h4><p>Constitution du dossier COBAC, mise en place du dispositif KYC/AML.</p></div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-num">3</div>
+      <div><h4>Lancement contrôlé au Cameroun</h4><p>Ouverture progressive à un nombre limité d'utilisateurs, sous supervision étroite.</p></div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-num">4</div>
+      <div><h4>Extension régionale</h4><p>Évaluation de l'extension vers d'autres marchés CEMAC/UEMOA selon les résultats du lancement contrôlé.</p></div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:16px;">
+    ℹ️ <span>L'équipe est en discussion avec la COBAC et des partenaires PSP potentiels. Aucun agrément n'est obtenu à ce jour.</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <span class="eyebrow">Structuration</span>
+  <h2 class="section-title">Structuration du financement</h2>
+  <p class="section-sub">La structuration capitalistique du projet est en cours de discussion. Les modalités précises (montant, valorisation, répartition de l'utilisation des fonds) ne sont pas publiées dans ce document tant qu'elles n'ont pas été arrêtées de façon définitive et cohérente à travers l'ensemble de nos documents.</p>
+  <div class="card deep" style="margin-top:18px;text-align:center;">
+    <h3>invest@africafrontiermarkets.com</h3>
+    <p>Douala, Cameroun · MEL Invests · NDA disponible sur demande</p>
+  </div>
+  `;
+}
+
+/* =========================================================================
+   ROUTAGE DES ONGLETS
+   ========================================================================= */
+function render(){
+  const tab = document.querySelector('#tabs button.active').dataset.tab;
+  document.getElementById('main').innerHTML = {
+    plateforme: renderPlateforme,
+    frontierpay: renderFrontierPay,
+    easymarket: renderEasyMarket,
+    fintech: renderFintech,
+    levee: renderLevee,
+  }[tab]();
+  window.scrollTo({top:0, behavior:'instant'});
+}
+document.getElementById('tabs').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn) return;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b===btn));
+  render();
+});
+render();
+</script>
+</body>
+</html>
