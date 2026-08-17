@@ -6,7 +6,7 @@ import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
@@ -39,6 +39,8 @@ from api_gateway.auth import router as auth_router
 logger = configure_logging()
 _instrument_cache: dict[str, tuple[float, list[dict]]] = {}
 _INSTRUMENT_CACHE_TTL_SECONDS = 300
+_market_history_cache: dict[str, tuple[float, dict]] = {}
+_MARKET_HISTORY_CACHE_TTL_SECONDS = 60
 
 class TransactionType(str, Enum):
     DEPOSIT = "deposit"
@@ -339,6 +341,67 @@ async def get_tradable_broker_assets(asset_class: str | None = None) -> list[dic
     return tradable_assets
 
 
+def normalize_bars(symbol: str, bars: list[dict]) -> dict:
+    """Convert Alpaca OHLC bars to a minimal chart-safe public payload."""
+    normalized = [
+        {
+            "timestamp": bar.get("t"),
+            "open": bar.get("o"),
+            "high": bar.get("h"),
+            "low": bar.get("l"),
+            "close": bar.get("c"),
+            "volume": bar.get("v"),
+        }
+        for bar in bars
+        if isinstance(bar, dict) and isinstance(bar.get("c"), (int, float))
+    ]
+    closes = [float(bar["close"]) for bar in normalized]
+    latest = closes[-1] if closes else None
+    previous = closes[-2] if len(closes) > 1 else None
+    change = latest - previous if latest is not None and previous not in (None, 0) else None
+    return {
+        "symbol": symbol,
+        "bars": normalized,
+        "last_price": latest,
+        "previous_close": previous,
+        "change": change,
+        "change_percent": (change / previous * 100) if change is not None and previous else None,
+        "currency": "USD",
+    }
+
+
+async def get_market_histories(symbols: list[str], days: int = 7) -> dict[str, dict]:
+    """Fetch cached daily Alpaca bars once for a bounded equity symbol batch."""
+    clean_symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol.strip()})[:25]
+    if not clean_symbols:
+        return {}
+    cache_key = f"{'|'.join(clean_symbols)}:{days}"
+    cached = _market_history_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _MARKET_HISTORY_CACHE_TTL_SECONDS:
+        return cached[1]
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    start = (datetime.now(timezone.utc) - timedelta(days=days + 4)).date().isoformat()
+    try:
+        payload = await alpaca_broker_client.get_stock_bars(
+            clean_symbols,
+            timeframe="1Day",
+            start=start,
+            adjustment="all",
+            feed="iex",
+            limit=min(1000, len(clean_symbols) * (days + 4)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to load Alpaca market data: {exc}")
+    bars_by_symbol = payload.get("bars", {}) if isinstance(payload, dict) else {}
+    histories = {
+        symbol: normalize_bars(symbol, bars_by_symbol.get(symbol, [])[-days:])
+        for symbol in clean_symbols
+    }
+    _market_history_cache[cache_key] = (time.monotonic(), histories)
+    return histories
+
+
 def paginate_instruments(assets: list[dict], query: str, page: int, page_size: int) -> tuple[list[dict], int]:
     normalized_query = query.strip().lower()
     if normalized_query:
@@ -388,6 +451,29 @@ async def broker_list_instruments(
         page=page,
         page_size=page_size,
     )
+
+
+@app.get("/api/v1/broker/market-snapshots")
+async def broker_market_snapshots(
+    symbols: str = Query(..., min_length=1, max_length=500),
+):
+    """Return bounded, cache-backed Alpaca price snapshots for catalogue sparklines."""
+    requested = [symbol for symbol in symbols.split(",") if symbol.strip()]
+    histories = await get_market_histories(requested, days=7)
+    return {"snapshots": histories}
+
+
+@app.get("/api/v1/broker/instruments/{symbol}/history")
+async def broker_instrument_history(
+    symbol: str,
+    days: int = Query(default=30, ge=5, le=90),
+):
+    """Return historical Alpaca daily bars for one market instrument. No order is created."""
+    normalized_symbol = symbol.strip().upper()
+    if not normalized_symbol.replace("-", "").replace(".", "").isalnum():
+        raise HTTPException(status_code=400, detail="Invalid market symbol")
+    history = await get_market_histories([normalized_symbol], days=days)
+    return history.get(normalized_symbol, normalize_bars(normalized_symbol, []))
 
 
 class BrokerAccountLinkRequest(BaseModel):
