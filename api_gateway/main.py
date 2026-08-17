@@ -445,9 +445,21 @@ def normalize_broker_activity(activity: dict) -> dict:
     }
 
 
+def build_activity_page(account_id: str, activities: list[dict], limit: int) -> dict:
+    transactions = [normalize_broker_activity(activity) for activity in activities if isinstance(activity, dict)]
+    next_page_token = transactions[-1]["id"] if len(transactions) == limit and transactions else None
+    return {
+        "account_id": account_id,
+        "transactions": transactions,
+        "count": len(transactions),
+        "next_page_token": next_page_token,
+    }
+
+
 @app.get("/api/v1/portfolio/transactions")
 async def get_portfolio_transactions(
     limit: int = Query(default=50, ge=1, le=100),
+    page_token: str | None = Query(default=None, min_length=1, max_length=300),
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -456,16 +468,18 @@ async def get_portfolio_transactions(
 
     link = await get_linked_broker_account(user_id, db)
     try:
-        activities = await alpaca_broker_client.list_account_activities(
-            link.alpaca_account_id,
-            direction="desc",
-            page_size=limit,
-        )
+        params = {"direction": "desc", "page_size": limit}
+        if page_token:
+            params["page_token"] = page_token
+        activities = await alpaca_broker_client.list_account_activities(link.alpaca_account_id, **params)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Unable to load broker activities: {exc}")
 
-    transactions = [normalize_broker_activity(activity) for activity in activities if isinstance(activity, dict)]
-    return {"account_id": link.alpaca_account_id, "transactions": transactions, "count": len(transactions)}
+    return build_activity_page(
+        link.alpaca_account_id,
+        activities if isinstance(activities, list) else [],
+        limit,
+    )
 
 
 async def get_current_user(request: Request):
