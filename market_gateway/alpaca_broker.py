@@ -91,6 +91,12 @@ class AlpacaBrokerClient:
     async def list_assets(self, **params: Any) -> Any:
         return await self.request("GET", "/v1/assets", params=params)
 
+    async def get_account_positions(self, account_id: str) -> Any:
+        return await self.request("GET", f"/v1/trading/accounts/{account_id}/positions")
+
+    async def get_account_balance(self, account_id: str) -> Any:
+        return await self.request("GET", f"/v1/accounts/{account_id}")
+
     async def create_order(self, account_id: str, order: dict[str, Any]) -> Any:
         return await self.request("POST", f"/v1/trading/accounts/{account_id}/orders", json=order)
 
