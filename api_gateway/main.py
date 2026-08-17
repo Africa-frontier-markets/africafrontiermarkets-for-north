@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from config.config import get_settings
 from config.database import init_db, engine
@@ -123,6 +123,10 @@ async def log_requests(request: Request, call_next):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+@app.head("/health")
+async def health_head():
+    return Response(status_code=200)
+
 @app.get("/ready")
 async def readiness_check():
     checks = {
@@ -138,6 +142,10 @@ async def readiness_check():
         )
 
     return {"status": "ready", "checks": checks}
+
+@app.head("/ready")
+async def readiness_head():
+    return Response(status_code=200)
 
 async def _check_database() -> bool:
     try:
