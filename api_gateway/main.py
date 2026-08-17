@@ -6,13 +6,13 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from typing import AsyncGenerator
 
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -405,6 +405,67 @@ async def get_portfolio(
         "account": account,
         "positions": positions if isinstance(positions, list) else [],
     }
+
+
+def normalize_broker_activity(activity: dict) -> dict:
+    """Expose a stable, non-sensitive representation of one Alpaca account activity."""
+    activity_type = str(activity.get("activity_type") or activity.get("type") or "OTHER")
+    symbol = activity.get("symbol")
+    side = activity.get("side")
+    amount = activity.get("net_amount")
+
+    if amount in (None, ""):
+        try:
+            amount_decimal = Decimal(str(activity.get("price"))) * Decimal(str(activity.get("qty")))
+            if side == "buy":
+                amount_decimal = -amount_decimal
+            amount = f"{amount_decimal:.2f}"
+        except (InvalidOperation, TypeError, ValueError):
+            amount = None
+
+    occurred_at = activity.get("transaction_time") or activity.get("created_at") or activity.get("date")
+    description = activity.get("description")
+    if not description:
+        if activity_type == "FILL" and symbol:
+            description = f"{str(side or 'trade').capitalize()} {symbol}"
+        elif symbol:
+            description = f"{activity_type} · {symbol}"
+        else:
+            description = activity_type
+
+    return {
+        "id": str(activity.get("id") or ""),
+        "activity_type": activity_type,
+        "symbol": symbol,
+        "side": side,
+        "quantity": activity.get("qty"),
+        "amount": str(amount) if amount not in (None, "") else None,
+        "occurred_at": occurred_at,
+        "description": description,
+    }
+
+
+@app.get("/api/v1/portfolio/transactions")
+async def get_portfolio_transactions(
+    limit: int = Query(default=50, ge=1, le=100),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return recent real Broker API activities for the authenticated linked account."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    link = await get_linked_broker_account(user_id, db)
+    try:
+        activities = await alpaca_broker_client.list_account_activities(
+            link.alpaca_account_id,
+            direction="desc",
+            page_size=limit,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to load broker activities: {exc}")
+
+    transactions = [normalize_broker_activity(activity) for activity in activities if isinstance(activity, dict)]
+    return {"account_id": link.alpaca_account_id, "transactions": transactions, "count": len(transactions)}
 
 
 async def get_current_user(request: Request):
