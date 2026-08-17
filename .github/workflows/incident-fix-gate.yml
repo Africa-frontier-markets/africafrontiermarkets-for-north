@@ -1,0 +1,27 @@
+name: Incident fix gate
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  prepare-agent-request:
+    if: github.event.label.name == 'fix-approved'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add controlled coding-agent instructions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          cat > /tmp/agent-prompt.md <<'EOF'
+          The maintainer approved this incident for a code fix. Inspect the issue, its logs, reproduction steps, and acceptance criteria. Implement the smallest safe change, add deterministic tests, run all repository checks, and open a draft pull request. Do not merge, deploy, change secrets, change DNS, or modify Northflank production resources. Report root cause, files changed, tests, risks, and rollback steps.
+          EOF
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "### Correctif approuvé pour l’agent GitHub\n\nL’incident a reçu le label \\`fix-approved\\`. Le coding agent peut maintenant être lancé sur cette issue avec les consignes suivantes :\n\n$(cat /tmp/agent-prompt.md)\n\n**Garde-fous :** le résultat doit être une PR en brouillon ; aucune fusion, publication, modification de secret, changement DNS ou action Northflank de production n’est autorisée automatiquement. Un mainteneur doit examiner et approuver la PR."
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPOSITORY" --add-label "agent-ready"

@@ -1,0 +1,73 @@
+name: Incident de service
+description: Signaler un incident avec logs, impact et demande éventuelle de correctif
+title: "[Incident] "
+labels:
+  - incident
+  - monitoring
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Sévérité
+      options:
+        - P1 - service indisponible
+        - P2 - fonctionnalité dégradée
+        - P3 - anomalie non bloquante
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact utilisateur
+      description: Décrire les utilisateurs ou fonctions affectés.
+    validations:
+      required: true
+  - type: input
+    id: detected_at
+    attributes:
+      label: Date et heure UTC de détection
+      placeholder: 2026-08-17T10:00:00Z
+    validations:
+      required: true
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: Endpoints ou composants concernés
+      value: |
+        - https://africafrontiermarkets.com/health
+        - https://africafrontiermarkets.com/ready
+        - https://www.africafrontiermarkets.com/health
+        - https://www.africafrontiermarkets.com/ready
+  - type: textarea
+    id: error_logs
+    attributes:
+      label: Logs d’erreur
+      description: Coller les logs Northflank, GitHub Actions ou UptimeRobot. Ne jamais inclure de secrets.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes de reproduction
+  - type: checkboxes
+    id: code_impact
+    attributes:
+      label: Impact sur le code
+      options:
+        - label: Le correctif doit modifier le code ou la structure du dépôt.
+        - label: Les tests et critères d’acceptation sont décrits ci-dessous.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d’acceptation
+      description: Décrire précisément le comportement attendu et les tests requis.
+    validations:
+      required: true
+  - type: checkboxes
+    id: approval
+    attributes:
+      label: Autorisation
+      options:
+        - label: Je demande une proposition de correctif sous forme de PR, sans déploiement automatique.
+          required: true
