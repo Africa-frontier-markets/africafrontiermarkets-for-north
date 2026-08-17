@@ -1,0 +1,73 @@
+name: AFM service watch
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health-watch:
+    name: Check public service health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check root and www endpoints
+        id: health
+        shell: bash
+        run: |
+          set +e
+          failures=""
+          for url in \
+            https://africafrontiermarkets.com/health \
+            https://africafrontiermarkets.com/ready \
+            https://www.africafrontiermarkets.com/health \
+            https://www.africafrontiermarkets.com/ready; do
+            get_code="$(curl --fail-with-body --silent --show-error --max-time 20 -o /dev/null -w '%{http_code}' "$url")"
+            head_code="$(curl --fail-with-body --silent --show-error --max-time 20 -I -o /dev/null -w '%{http_code}' "$url")"
+            echo "$url GET=$get_code HEAD=$head_code"
+            if [[ "$get_code" != "2"* || "$head_code" != "2"* ]]; then
+              failures+="$url GET=$get_code HEAD=$head_code\n"
+            fi
+          done
+          if [[ -n "$failures" ]]; then
+            printf '%b' "$failures" > /tmp/afm-failures.txt
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo '### Failed checks'
+              echo
+              printf '%b' "$failures"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "failed=false" >> "$GITHUB_OUTPUT"
+          echo 'All AFM endpoints returned successful GET and HEAD responses.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update incident issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="AFM service health degraded"
+          body="Automated check detected a failure at $(date -u +%FT%TZ).\n\n$(cat /tmp/afm-failures.txt)\n\nThis workflow reports the incident only. Production deployment remains manual and requires an approved pull request."
+          issue_number="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" --label monitoring || gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close recovered incident
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          issue_number="$(gh issue list --state open --search 'AFM service health degraded in:title' --json number --jq '.[0].number')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --body "All monitored endpoints recovered at $(date -u +%FT%TZ)."
+            gh issue close "$issue_number"
+          fi
