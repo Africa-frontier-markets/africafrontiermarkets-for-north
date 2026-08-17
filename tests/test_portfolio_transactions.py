@@ -1,4 +1,4 @@
-from api_gateway.main import build_activity_page, normalize_broker_activity
+from api_gateway.main import build_activity_page, normalize_broker_activity, paginate_instruments
 
 
 def test_normalize_trade_activity_uses_real_fill_fields():
@@ -52,3 +52,15 @@ def test_activity_page_exposes_last_real_activity_as_next_cursor_only_when_full(
 
     assert full_page["next_page_token"] == "activity-2"
     assert partial_page["next_page_token"] is None
+
+
+def test_paginate_instruments_filters_real_metadata_before_slicing():
+    assets = [
+        {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"},
+        {"symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ"},
+        {"symbol": "AFRM", "name": "Affirm Holdings", "exchange": "NASDAQ"},
+    ]
+    page, total = paginate_instruments(assets, query="af", page=1, page_size=1)
+
+    assert total == 1
+    assert page == [{"symbol": "AFRM", "name": "Affirm Holdings", "exchange": "NASDAQ"}]

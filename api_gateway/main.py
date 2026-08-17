@@ -3,6 +3,7 @@ AFM API Gateway — FastAPI with real payment endpoint
 """
 
 import asyncio
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -36,6 +37,8 @@ from payment_hub.models import BrokerAccountLink
 from api_gateway.auth import router as auth_router
 
 logger = configure_logging()
+_instrument_cache: dict[str, tuple[float, list[dict]]] = {}
+_INSTRUMENT_CACHE_TTL_SECONDS = 300
 
 class TransactionType(str, Enum):
     DEPOSIT = "deposit"
@@ -315,23 +318,76 @@ async def broker_list_orders(account_id: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@app.get("/api/v1/broker/assets")
-async def broker_list_assets(asset_class: str = "us_equity"):
-    """List active, tradable instruments validated by the Alpaca Broker API."""
+async def get_tradable_broker_assets(asset_class: str | None = None) -> list[dict]:
+    """Fetch and cache active, tradable Broker API assets for a short interval."""
     from market_gateway.alpaca_broker import alpaca_broker_client
 
+    cache_key = asset_class or "all"
+    cached = _instrument_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < _INSTRUMENT_CACHE_TTL_SECONDS:
+        return cached[1]
     try:
-        assets = await alpaca_broker_client.list_assets(status="active", asset_class=asset_class)
+        params = {"status": "active"}
+        if asset_class:
+            params["asset_class"] = asset_class
+        assets = await alpaca_broker_client.list_assets(**params)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
     tradable_assets = [asset for asset in assets if asset.get("tradable") is True] if isinstance(assets, list) else []
-    return {"count": len(tradable_assets), "asset_class": asset_class, "assets": tradable_assets}
+    tradable_assets.sort(key=lambda asset: str(asset.get("symbol") or ""))
+    _instrument_cache[cache_key] = (time.monotonic(), tradable_assets)
+    return tradable_assets
+
+
+def paginate_instruments(assets: list[dict], query: str, page: int, page_size: int) -> tuple[list[dict], int]:
+    normalized_query = query.strip().lower()
+    if normalized_query:
+        assets = [
+            asset for asset in assets
+            if normalized_query in str(asset.get("symbol") or "").lower()
+            or normalized_query in str(asset.get("name") or "").lower()
+            or normalized_query in str(asset.get("exchange") or "").lower()
+        ]
+    total_count = len(assets)
+    offset = (page - 1) * page_size
+    return assets[offset : offset + page_size], total_count
+
+
+@app.get("/api/v1/broker/assets")
+async def broker_list_assets(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
+    """List active, tradable Alpaca instruments through a filtered, paginated response."""
+    tradable_assets = await get_tradable_broker_assets(asset_class)
+    assets, total_count = paginate_instruments(tradable_assets, query, page, page_size)
+    return {
+        "count": len(assets),
+        "total_count": total_count,
+        "asset_class": asset_class or "all",
+        "page": page,
+        "page_size": page_size,
+        "has_more": page * page_size < total_count,
+        "assets": assets,
+    }
 
 
 @app.get("/api/v1/broker/instruments")
-async def broker_list_instruments(asset_class: str = "us_equity"):
+async def broker_list_instruments(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
     """Frontend-friendly alias for the validated tradable instrument list."""
-    return await broker_list_assets(asset_class=asset_class)
+    return await broker_list_assets(
+        asset_class=asset_class,
+        query=query,
+        page=page,
+        page_size=page_size,
+    )
 
 
 class BrokerAccountLinkRequest(BaseModel):
