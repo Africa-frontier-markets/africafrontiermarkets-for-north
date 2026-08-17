@@ -53,11 +53,11 @@ jobs:
         run: |
           title="AFM service health degraded"
           body="Automated check detected a failure at $(date -u +%FT%TZ).\n\n$(cat /tmp/afm-failures.txt)\n\nThis workflow reports the incident only. Production deployment remains manual and requires an approved pull request."
-          issue_number="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')"
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number')"
           if [[ -n "$issue_number" ]]; then
-            gh issue comment "$issue_number" --body "$body"
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            gh issue create --title "$title" --body "$body" --label monitoring || gh issue create --title "$title" --body "$body"
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" --label monitoring || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
           fi
 
       - name: Close recovered incident
@@ -66,8 +66,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          issue_number="$(gh issue list --state open --search 'AFM service health degraded in:title' --json number --jq '.[0].number')"
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'AFM service health degraded in:title' --json number --jq '.[0].number')"
           if [[ -n "$issue_number" ]]; then
-            gh issue comment "$issue_number" --body "All monitored endpoints recovered at $(date -u +%FT%TZ)."
-            gh issue close "$issue_number"
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body "All monitored endpoints recovered at $(date -u +%FT%TZ)."
+            gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY"
           fi
