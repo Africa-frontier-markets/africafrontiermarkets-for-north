@@ -17,9 +17,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.config import get_settings
-from config.database import init_db, engine
+from config.database import init_db, engine, get_db
 from config.exceptions import (
     AFMException, ValidationError, NotFoundError,
 )
@@ -30,6 +32,7 @@ from config.telemetry import app_info, http_requests_total, http_request_duratio
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
+from payment_hub.models import BrokerAccountLink
 from api_gateway.auth import router as auth_router
 
 logger = configure_logging()
@@ -313,15 +316,96 @@ async def broker_list_orders(account_id: str):
 
 
 @app.get("/api/v1/broker/assets")
-async def broker_list_assets():
-    """List tradable assets from the Alpaca Broker API."""
+async def broker_list_assets(asset_class: str = "us_equity"):
+    """List active, tradable instruments validated by the Alpaca Broker API."""
     from market_gateway.alpaca_broker import alpaca_broker_client
 
     try:
-        assets = await alpaca_broker_client.list_assets(status="active")
+        assets = await alpaca_broker_client.list_assets(status="active", asset_class=asset_class)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
-    return {"count": len(assets) if isinstance(assets, list) else None, "assets": assets}
+    tradable_assets = [asset for asset in assets if asset.get("tradable") is True] if isinstance(assets, list) else []
+    return {"count": len(tradable_assets), "asset_class": asset_class, "assets": tradable_assets}
+
+
+@app.get("/api/v1/broker/instruments")
+async def broker_list_instruments(asset_class: str = "us_equity"):
+    """Frontend-friendly alias for the validated tradable instrument list."""
+    return await broker_list_assets(asset_class=asset_class)
+
+
+class BrokerAccountLinkRequest(BaseModel):
+    alpaca_account_id: str = Field(..., min_length=8, max_length=100)
+
+
+async def get_linked_broker_account(
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> BrokerAccountLink:
+    result = await db.execute(
+        select(BrokerAccountLink).where(
+            BrokerAccountLink.user_id == user_id,
+            BrokerAccountLink.status == "active",
+        )
+    )
+    link = result.scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=409, detail="No active broker account is linked to this user")
+    return link
+
+
+@app.post("/api/v1/broker/account-link", status_code=status.HTTP_201_CREATED)
+async def link_broker_account(
+    payload: BrokerAccountLinkRequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify and link one Alpaca account to the authenticated AFM user."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    try:
+        account = await alpaca_broker_client.get_account(payload.alpaca_account_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to verify broker account: {exc}")
+
+    result = await db.execute(select(BrokerAccountLink).where(BrokerAccountLink.user_id == user_id))
+    link = result.scalar_one_or_none()
+    if link is None:
+        link = BrokerAccountLink(
+            user_id=user_id,
+            alpaca_account_id=payload.alpaca_account_id,
+            status="active",
+        )
+        db.add(link)
+    else:
+        link.alpaca_account_id = payload.alpaca_account_id
+        link.status = "active"
+    await db.commit()
+    return {"user_id": str(user_id), "account_id": account.get("id", payload.alpaca_account_id), "status": link.status}
+
+
+@app.get("/api/v1/portfolio")
+async def get_portfolio(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated user's linked Alpaca account and open positions."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    link = await get_linked_broker_account(user_id, db)
+    try:
+        account, positions = await asyncio.gather(
+            alpaca_broker_client.get_account_balance(link.alpaca_account_id),
+            alpaca_broker_client.get_account_positions(link.alpaca_account_id),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to load broker portfolio: {exc}")
+    return {
+        "account_id": link.alpaca_account_id,
+        "account": account,
+        "positions": positions if isinstance(positions, list) else [],
+    }
+
 
 async def get_current_user(request: Request):
     auth = request.headers.get("Authorization", "")
@@ -345,8 +429,19 @@ async def rate_limit(request: Request):
     return True
 
 @app.get("/api/v1/wallet/balance", dependencies=[Depends(rate_limit)])
-async def get_wallet_balance(user=Depends(get_current_user)):
-    return {"user_id": user.get("sub"), "balances": {}}
+async def get_wallet_balance(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return broker account balances for the authenticated linked user."""
+    from market_gateway.alpaca_broker import alpaca_broker_client
+
+    link = await get_linked_broker_account(user_id, db)
+    try:
+        account = await alpaca_broker_client.get_account_balance(link.alpaca_account_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Unable to load broker balance: {exc}")
+    return {"user_id": str(user_id), "account_id": link.alpaca_account_id, "balances": account}
 
 if get_settings().is_development:
     @app.post("/dev/token")

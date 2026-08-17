@@ -72,3 +72,16 @@ class User(Base):
     is_active = Column(String(1), default="1")
     kyc_status = Column(String(20), default="pending")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class BrokerAccountLink(Base):
+    """Ownership link between an AFM user and one Alpaca Broker account."""
+
+    __tablename__ = "broker_account_links"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    alpaca_account_id = Column(String(100), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
