@@ -8,13 +8,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from typing import AsyncGenerator
 
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from config.config import get_settings
 from config.database import init_db, engine
@@ -173,13 +175,36 @@ async def metrics():
         media_type=CONTENT_TYPE_LATEST,
     )
 
+PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
+
+
 @app.get("/")
 async def root():
+    index_path = PUBLIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
     return {
         "name": "Africa Frontier Markets",
         "version": "prod-1.0.0",
         "status": "operational",
     }
+
+
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
+
+
+@app.get("/dashboard")
+async def dashboard():
+    dashboard_path = PUBLIC_DIR / "dashboard.html"
+    if dashboard_path.exists():
+        return FileResponse(dashboard_path)
+    raise HTTPException(status_code=404, detail="Dashboard not found")
+
+
+if PUBLIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(PUBLIC_DIR)), name="static")
 
 # --------------------------------------------------------------------------
 # Alpaca Broker API integration

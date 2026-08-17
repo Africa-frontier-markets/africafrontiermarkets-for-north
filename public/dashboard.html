@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FrontierPay — Console d'exploitation</title>
+<style>
+  :root{
+    --indigo-950: #0F1729;
+    --indigo-900: #141F38;
+    --indigo-850: #1A2540;
+    --indigo-750: #26314F;
+    --indigo-650: #34406366;
+    --ochre: #C68A3D;
+    --ochre-dim: #C68A3D99;
+    --teal: #4FA890;
+    --clay: #C05C4A;
+    --sand-100: #EDE6D6;
+    --sand-400: #9CA3B5;
+    --sand-600: #6B7488;
+    --sans: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Roboto Mono", "Cascadia Code", Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0; height:100%;}
+  body{
+    background:var(--indigo-950); color:var(--sand-100);
+    font-family:var(--sans); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums;}
+  a{color:var(--ochre);}
+  button{font-family:var(--sans); cursor:pointer;}
+  ::selection{background:var(--ochre-dim);}
+
+  /* ---------- Login screen ---------- */
+  #login-screen{
+    height:100vh; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 20% 20%, #1A254040 0%, transparent 45%),
+      radial-gradient(circle at 80% 80%, #C68A3D14 0%, transparent 50%),
+      var(--indigo-950);
+  }
+  .login-card{
+    width:340px; background:var(--indigo-900); border:1px solid var(--indigo-750);
+    border-radius:10px; padding:36px 32px;
+  }
+  .login-wordmark{
+    font-size:11px; letter-spacing:0.22em; text-transform:uppercase;
+    color:var(--ochre); margin-bottom:6px; font-weight:700;
+  }
+  .login-title{font-size:20px; font-weight:600; margin:0 0 26px; color:var(--sand-100);}
+  .field{margin-bottom:16px;}
+  .field label{display:block; font-size:12px; color:var(--sand-400); margin-bottom:6px;}
+  .field input{
+    width:100%; background:var(--indigo-950); border:1px solid var(--indigo-750);
+    color:var(--sand-100); padding:10px 12px; border-radius:6px; font-size:14px;
+    font-family:var(--mono);
+  }
+  .field input:focus{outline:2px solid var(--ochre); outline-offset:1px; border-color:var(--ochre);}
+  .btn-primary{
+    width:100%; background:var(--ochre); color:var(--indigo-950); border:none;
+    padding:11px; border-radius:6px; font-weight:700; font-size:14px; margin-top:6px;
+  }
+  .btn-primary:hover{background:#d69850;}
+  .btn-secondary{
+    background:transparent; border:1px solid var(--indigo-750); color:var(--sand-400);
+    padding:7px 12px; border-radius:6px; font-size:12px;
+  }
+  .btn-secondary:hover{color:var(--sand-100); border-color:var(--sand-400);}
+  .auth-toggle{text-align:center; margin-top:16px; font-size:12px; color:var(--sand-400);}
+  .auth-toggle button{background:none; border:none; color:var(--ochre); text-decoration:underline; font-size:12px; padding:0;}
+  .error-msg{
+    background:#C05C4A1a; border:1px solid var(--clay); color:#e8a89c;
+    padding:9px 12px; border-radius:6px; font-size:12.5px; margin-bottom:14px; display:none;
+  }
+
+  /* ---------- App shell ---------- */
+  #app{display:none; min-height:100vh; flex-direction:column;}
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; border-bottom:1px solid var(--indigo-750);
+    background:var(--indigo-900);
+  }
+  .wordmark{font-size:13px; font-weight:800; letter-spacing:0.15em; color:var(--ochre);}
+  .wordmark span{color:var(--sand-400); font-weight:500; letter-spacing:0.05em;}
+  .topbar-right{display:flex; align-items:center; gap:14px;}
+  .merchant-pill{
+    font-size:12px; color:var(--sand-400); font-family:var(--mono);
+  }
+  .status-badge{
+    font-size:10px; text-transform:uppercase; letter-spacing:0.06em; font-weight:700;
+    padding:3px 8px; border-radius:20px;
+  }
+  .status-active{background:#4FA89022; color:var(--teal);}
+  .status-pending_review{background:#C68A3D22; color:var(--ochre);}
+  .status-suspended, .status-down{background:#C05C4A22; color:var(--clay);}
+
+  /* ---------- Rail map (signature element) ---------- */
+  .railmap-wrap{
+    background:var(--indigo-900); border-bottom:1px solid var(--indigo-750);
+    padding:20px 28px 22px;
+  }
+  .railmap-label{
+    font-size:10px; text-transform:uppercase; letter-spacing:0.14em; color:var(--sand-600);
+    margin-bottom:14px;
+  }
+  .railmap{
+    display:flex; align-items:stretch; overflow-x:auto; gap:0; position:relative;
+  }
+  .rail-node{
+    flex:1 0 150px; position:relative; padding:0 18px 0 0; min-width:150px;
+  }
+  .rail-node:not(:last-child)::after{
+    content:""; position:absolute; top:9px; right:0; width:18px; height:1px;
+    background:var(--indigo-750);
+  }
+  .rail-dot{
+    width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:7px;
+    position:relative; top:-1px;
+  }
+  .rail-dot.healthy{background:var(--teal); box-shadow:0 0 0 3px #4FA89022;}
+  .rail-dot.degraded{background:var(--ochre); box-shadow:0 0 0 3px #C68A3D22;}
+  .rail-dot.down{background:var(--clay); box-shadow:0 0 0 3px #C05C4A22; animation:pulse 1.6s ease-in-out infinite;}
+  .rail-dot.unknown{background:var(--sand-600);}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:0.35;}}
+  .rail-name{font-size:12.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;}
+  .rail-stats{font-family:var(--mono); font-size:11px; color:var(--sand-400); margin-top:6px; line-height:1.6;}
+  .rail-stats b{color:var(--sand-100); font-weight:600;}
+  .railmap-empty{color:var(--sand-600); font-size:12.5px; font-family:var(--mono);}
+
+  /* ---------- Layout ---------- */
+  .content{display:flex; gap:22px; padding:22px 28px 60px; flex:1; align-items:flex-start;}
+  .col-main{flex:1 1 62%; min-width:0; display:flex; flex-direction:column; gap:20px;}
+  .col-side{flex:1 1 34%; max-width:400px; display:flex; flex-direction:column; gap:20px;}
+
+  .card{
+    background:var(--indigo-900); border:1px solid var(--indigo-750); border-radius:10px;
+    padding:18px 20px;
+  }
+  .card-title{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--sand-600);
+    margin:0 0 14px; display:flex; align-items:center; justify-content:space-between;
+  }
+
+  /* Merchant card */
+  .merchant-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px 18px;}
+  .merchant-metric-label{font-size:11px; color:var(--sand-600); margin-bottom:3px;}
+  .merchant-metric-value{font-family:var(--mono); font-size:18px; font-weight:600; color:var(--sand-100);}
+  .risk-band{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; padding:2px 7px; border-radius:4px; display:inline-block; margin-top:4px;}
+  .risk-low{background:#4FA89022; color:var(--teal);}
+  .risk-medium{background:#C68A3D22; color:var(--ochre);}
+  .risk-high{background:#C05C4A22; color:var(--clay);}
+  .kora-flag{margin-top:14px; padding-top:14px; border-top:1px solid var(--indigo-750); font-size:12px;}
+  .kora-flag.breach{color:var(--clay);}
+  .kora-flag.ok{color:var(--sand-400);}
+
+  /* Filters */
+  .filters{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;}
+  .filters select, .filters input{
+    background:var(--indigo-950); border:1px solid var(--indigo-750); color:var(--sand-100);
+    padding:7px 10px; border-radius:6px; font-size:12.5px; font-family:var(--mono);
+  }
+  .filters input[type="text"]{width:160px;}
+
+  /* Transactions table */
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{
+    text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--sand-600); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--indigo-750);
+  }
+  tbody td{padding:9px 10px; border-bottom:1px solid var(--indigo-850); font-family:var(--mono); color:var(--sand-100);}
+  tbody tr:hover{background:var(--indigo-850);}
+  .txn-status{font-size:10px; text-transform:uppercase; font-weight:700; padding:2px 7px; border-radius:4px;}
+  .txn-completed{background:#4FA89022; color:var(--teal);}
+  .txn-pending, .txn-processing{background:#C68A3D22; color:var(--ochre);}
+  .txn-failed{background:#C05C4A22; color:var(--clay);}
+  .txn-ambiguous{background:#8B6FBD22; color:#b39ddb;}
+  .txn-refunded{background:#4a556622; color:var(--sand-400);}
+
+  .pagination{display:flex; align-items:center; gap:10px; margin-top:14px; font-size:12px; color:var(--sand-400);}
+  .pagination button{background:var(--indigo-850); border:1px solid var(--indigo-750); color:var(--sand-100); padding:5px 10px; border-radius:5px; font-size:12px;}
+  .pagination button:disabled{opacity:0.35; cursor:not-allowed;}
+
+  .export-row{display:flex; gap:8px;}
+
+  /* Activity feed */
+  .feed{display:flex; flex-direction:column; gap:0; max-height:340px; overflow-y:auto;}
+  .feed-item{
+    padding:10px 0; border-bottom:1px solid var(--indigo-850); font-size:12.5px;
+  }
+  .feed-item:last-child{border-bottom:none;}
+  .feed-event-type{
+    font-family:var(--mono); font-size:10.5px; text-transform:uppercase; color:var(--ochre);
+    letter-spacing:0.03em;
+  }
+  .feed-desc{color:var(--sand-100); margin-top:3px;}
+  .feed-time{color:var(--sand-600); font-size:11px; font-family:var(--mono); margin-top:2px;}
+
+  /* Webhook mini table */
+  .webhook-stats-row{display:flex; gap:16px; margin-bottom:14px; font-size:11px; color:var(--sand-400);}
+  .webhook-stats-row b{color:var(--sand-100); font-family:var(--mono); font-size:14px; display:block;}
+
+  .empty-state{
+    color:var(--sand-600); font-size:12.5px; font-family:var(--mono); padding:24px 0; text-align:center;
+  }
+
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--indigo-750); border-radius:4px;}
+
+  @media (max-width: 880px){
+    .content{flex-direction:column;}
+    .col-side{max-width:none;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-wordmark">FrontierPay</div>
+    <h1 class="login-title" id="auth-title">Connexion</h1>
+    <div class="error-msg" id="auth-error"></div>
+    <form id="auth-form">
+      <div class="field">
+        <label>Adresse e-mail</label>
+        <input type="email" id="auth-email" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="auth-password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-primary" id="auth-submit">Se connecter</button>
+    </form>
+    <div class="auth-toggle">
+      <span id="auth-toggle-text">Pas encore de compte marchand ?</span>
+      <button id="auth-toggle-btn">Créer un compte</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <div class="wordmark">FRONTIERPAY <span>· Console d'exploitation</span></div>
+    <div class="topbar-right">
+      <span class="merchant-pill" id="topbar-email"></span>
+      <button class="btn-secondary" id="logout-btn">Déconnexion</button>
+    </div>
+  </div>
+
+  <div class="railmap-wrap">
+    <div class="railmap-label">Santé des rails PSP — fenêtre glissante 60 min</div>
+    <div class="railmap" id="railmap"></div>
+  </div>
+
+  <div class="content">
+    <div class="col-main">
+
+      <div class="card">
+        <div class="card-title">Transactions</div>
+        <div class="filters">
+          <select id="f-status">
+            <option value="">Tous statuts</option>
+            <option value="pending">pending</option>
+            <option value="processing">processing</option>
+            <option value="completed">completed</option>
+            <option value="failed">failed</option>
+            <option value="ambiguous">ambiguous</option>
+            <option value="refunded">refunded</option>
+          </select>
+          <select id="f-psp">
+            <option value="">Tous rails</option>
+            <option value="kora">kora</option>
+            <option value="fincra">fincra</option>
+            <option value="flutterwave">flutterwave</option>
+            <option value="stripe">stripe</option>
+            <option value="mtn_momo">mtn_momo</option>
+            <option value="orange_money">orange_money</option>
+          </select>
+          <input type="text" id="f-currency" placeholder="Devise (XOF, NGN...)">
+          <input type="text" id="f-search" placeholder="Recherche (ID, réf. PSP)">
+          <button class="btn-secondary" id="f-apply">Filtrer</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Statut</th><th>Rail</th><th>Montant</th><th>Frais</th><th>Créé</th></tr>
+            </thead>
+            <tbody id="txn-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="txn-empty" style="display:none;">Aucune transaction ne correspond à ces filtres.</div>
+        </div>
+        <div class="pagination">
+          <button id="txn-prev">← Précédent</button>
+          <span id="txn-page-info"></span>
+          <button id="txn-next">Suivant →</button>
+          <span style="flex:1;"></span>
+          <div class="export-row">
+            <button class="btn-secondary" id="export-csv">Export CSV</button>
+            <button class="btn-secondary" id="export-xlsx">Export Excel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Webhooks reçus</div>
+        <div class="webhook-stats-row" id="webhook-stats"></div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>PSP</th><th>Type</th><th>Statut</th><th>Latence</th><th>Rejeu</th><th>Reçu</th></tr>
+            </thead>
+            <tbody id="webhook-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="webhook-empty" style="display:none;">Aucun webhook reçu pour ce marchand.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-side">
+
+      <div class="card">
+        <div class="card-title">Profil marchand<span class="status-badge" id="merchant-status-badge"></span></div>
+        <div class="merchant-grid">
+          <div>
+            <div class="merchant-metric-label">Volume (30j)</div>
+            <div class="merchant-metric-value" id="m-volume">—</div>
+          </div>
+          <div>
+            <div class="merchant-metric-label">Transactions (30j)</div>
+            <div class="merchant-metric-value" id="m-count">—</div>
+          </div>
+          <div>
+            <div class="merchant-metric-label">Taux de remboursement</div>
+            <div class="merchant-metric-value" id="m-refund">—</div>
+          </div>
+          <div>
+            <div class="merchant-metric-label">Taux de chargeback</div>
+            <div class="merchant-metric-value" id="m-chargeback">—</div>
+          </div>
+        </div>
+        <div>
+          <div class="merchant-metric-label" style="margin-top:14px;">Score de risque</div>
+          <div class="merchant-metric-value" id="m-risk">—</div>
+          <span class="risk-band" id="m-risk-band"></span>
+        </div>
+        <div class="kora-flag" id="m-kora-flag"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Journal d'activité</div>
+        <div class="feed" id="activity-feed"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const API = ""; // même origine — servi par FastAPI
+  let token = localStorage.getItem("afm_token") || null;
+  let userEmail = localStorage.getItem("afm_email") || "";
+  let isRegisterMode = false;
+  let txnPage = 1;
+
+  // ---------- Helpers ----------
+  async function apiFetch(path, opts = {}) {
+    const headers = Object.assign({}, opts.headers || {}, token ? {"Authorization": "Bearer " + token} : {});
+    if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const res = await fetch(API + path, Object.assign({}, opts, {headers}));
+    if (res.status === 401) { logout(); throw new Error("Session expirée"); }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || ("Erreur " + res.status));
+    }
+    return res;
+  }
+
+  function fmtAmount(v) {
+    const n = parseFloat(v);
+    return isNaN(n) ? v : n.toLocaleString("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+  }
+  function fmtPct(rateStr) {
+    if (rateStr === null || rateStr === undefined) return "—";
+    return (parseFloat(rateStr) * 100).toFixed(2) + "%";
+  }
+  function shortId(id) { return id ? id.slice(0, 8) : "—"; }
+
+  // ---------- Auth ----------
+  const loginScreen = document.getElementById("login-screen");
+  const appEl = document.getElementById("app");
+  const authForm = document.getElementById("auth-form");
+  const authError = document.getElementById("auth-error");
+  const authTitle = document.getElementById("auth-title");
+  const authSubmit = document.getElementById("auth-submit");
+  const authToggleBtn = document.getElementById("auth-toggle-btn");
+  const authToggleText = document.getElementById("auth-toggle-text");
+
+  authToggleBtn.addEventListener("click", () => {
+    isRegisterMode = !isRegisterMode;
+    authTitle.textContent = isRegisterMode ? "Créer un compte" : "Connexion";
+    authSubmit.textContent = isRegisterMode ? "Créer le compte" : "Se connecter";
+    authToggleText.textContent = isRegisterMode ? "Déjà un compte ?" : "Pas encore de compte marchand ?";
+    authToggleBtn.textContent = isRegisterMode ? "Se connecter" : "Créer un compte";
+    authError.style.display = "none";
+  });
+
+  authForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    authError.style.display = "none";
+    const email = document.getElementById("auth-email").value;
+    const password = document.getElementById("auth-password").value;
+    const endpoint = isRegisterMode ? "/api/v1/auth/register" : "/api/v1/auth/login";
+    try {
+      const res = await fetch(API + endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email, password}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "Identifiants invalides");
+      }
+      const data = await res.json();
+      token = data.access_token;
+      userEmail = email;
+      localStorage.setItem("afm_token", token);
+      localStorage.setItem("afm_email", email);
+      showApp();
+    } catch (err) {
+      authError.textContent = err.message;
+      authError.style.display = "block";
+    }
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", logout);
+
+  function logout() {
+    token = null;
+    localStorage.removeItem("afm_token");
+    localStorage.removeItem("afm_email");
+    appEl.style.display = "none";
+    loginScreen.style.display = "flex";
+  }
+
+  function showApp() {
+    loginScreen.style.display = "none";
+    appEl.style.display = "flex";
+    document.getElementById("topbar-email").textContent = userEmail;
+    refreshAll();
+    setInterval(loadRailMap, 30000);
+  }
+
+  // ---------- Rail map ----------
+  async function loadRailMap() {
+    const el = document.getElementById("railmap");
+    try {
+      const res = await apiFetch("/api/v1/psp-health?window_minutes=60");
+      const data = await res.json();
+      if (!data.psps.length) {
+        el.innerHTML = '<div class="railmap-empty">Aucun appel PSP dans la fenêtre — pas de statut à afficher.</div>';
+        return;
+      }
+      el.innerHTML = data.psps.map(p => `
+        <div class="rail-node">
+          <div class="rail-name"><span class="rail-dot ${p.status}"></span>${p.psp.replace('_',' ')}</div>
+          <div class="rail-stats">
+            succès <b>${p.success_rate !== null ? (p.success_rate*100).toFixed(0)+'%' : '—'}</b><br>
+            latence <b>${p.avg_latency_ms !== null ? Math.round(p.avg_latency_ms)+'ms' : '—'}</b> ·
+            ${p.total_calls} appel${p.total_calls>1?'s':''}
+          </div>
+        </div>
+      `).join("");
+    } catch (err) {
+      el.innerHTML = '<div class="railmap-empty">Indisponible : ' + err.message + '</div>';
+    }
+  }
+
+  // ---------- Merchant profile ----------
+  async function loadMerchant() {
+    try {
+      const res = await apiFetch("/api/v1/merchants/me");
+      const m = await res.json();
+      const badge = document.getElementById("merchant-status-badge");
+      badge.textContent = m.status;
+      badge.className = "status-badge status-" + m.status;
+
+      const volumeEntries = Object.entries(m.volume_by_currency || {});
+      document.getElementById("m-volume").textContent = volumeEntries.length
+        ? volumeEntries.map(([c,v]) => fmtAmount(v) + " " + c).join(" · ")
+        : "0";
+      document.getElementById("m-count").textContent = m.transaction_count;
+      document.getElementById("m-refund").textContent = fmtPct(m.refund_rate);
+      document.getElementById("m-chargeback").textContent = fmtPct(m.chargeback_rate);
+      document.getElementById("m-risk").textContent = m.risk_score + " / 100";
+
+      const bandEl = document.getElementById("m-risk-band");
+      bandEl.textContent = m.risk_band;
+      bandEl.className = "risk-band risk-" + m.risk_band;
+
+      const koraEl = document.getElementById("m-kora-flag");
+      if (m.exceeds_kora_chargeback_threshold) {
+        koraEl.className = "kora-flag breach";
+        koraEl.textContent = "⚠ Dépasse le seuil contractuel Kora de chargeback (0,5% — art. 7.11)";
+      } else {
+        koraEl.className = "kora-flag ok";
+        koraEl.textContent = "✓ Sous le seuil contractuel Kora de chargeback (0,5%)";
+      }
+    } catch (err) { console.error("merchant load failed", err); }
+  }
+
+  // ---------- Transactions ----------
+  function txnQuery(page) {
+    const params = new URLSearchParams();
+    const status = document.getElementById("f-status").value;
+    const psp = document.getElementById("f-psp").value;
+    const currency = document.getElementById("f-currency").value.trim();
+    const search = document.getElementById("f-search").value.trim();
+    if (status) params.set("status_", status);
+    if (psp) params.set("psp", psp);
+    if (currency) params.set("currency", currency);
+    if (search) params.set("search", search);
+    params.set("page", page);
+    params.set("page_size", 15);
+    return params.toString();
+  }
+
+  async function loadTransactions(page = 1) {
+    txnPage = page;
+    try {
+      const res = await apiFetch("/api/v1/transactions?" + txnQuery(page));
+      const data = await res.json();
+      const tbody = document.getElementById("txn-tbody");
+      const emptyEl = document.getElementById("txn-empty");
+
+      if (!data.items.length) {
+        tbody.innerHTML = "";
+        emptyEl.style.display = "block";
+      } else {
+        emptyEl.style.display = "none";
+        tbody.innerHTML = data.items.map(t => `
+          <tr>
+            <td title="${t.transaction_id}">${shortId(t.transaction_id)}</td>
+            <td><span class="txn-status txn-${t.status}">${t.status}</span></td>
+            <td>${t.psp}</td>
+            <td>${fmtAmount(t.amount)} ${t.currency}</td>
+            <td>${fmtAmount(t.fee_amount)} ${t.currency}</td>
+            <td>${fmtDate(t.created_at)}</td>
+          </tr>
+        `).join("");
+      }
+
+      const p = data.pagination;
+      document.getElementById("txn-page-info").textContent =
+        `Page ${p.page} / ${p.total_pages || 1} — ${p.total_count} transaction${p.total_count>1?'s':''}`;
+      document.getElementById("txn-prev").disabled = p.page <= 1;
+      document.getElementById("txn-next").disabled = p.page >= p.total_pages;
+    } catch (err) { console.error("transactions load failed", err); }
+  }
+
+  document.getElementById("f-apply").addEventListener("click", () => loadTransactions(1));
+  document.getElementById("txn-prev").addEventListener("click", () => loadTransactions(txnPage - 1));
+  document.getElementById("txn-next").addEventListener("click", () => loadTransactions(txnPage + 1));
+
+  async function exportFile(format) {
+    try {
+      const res = await apiFetch("/api/v1/transactions/export." + format + "?" + txnQuery(1).replace(/page(_size)?=\d+&?/g, ""));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "afm_transactions." + format;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) { alert("Export impossible : " + err.message); }
+  }
+  document.getElementById("export-csv").addEventListener("click", () => exportFile("csv"));
+  document.getElementById("export-xlsx").addEventListener("click", () => exportFile("xlsx"));
+
+  // ---------- Webhooks ----------
+  async function loadWebhooks() {
+    try {
+      const res = await apiFetch("/api/v1/webhooks?page_size=10");
+      const data = await res.json();
+
+      const statsEl = document.getElementById("webhook-stats");
+      const s = data.stats;
+      statsEl.innerHTML = `
+        <div>Total<b>${s.total}</b></div>
+        <div>Traités<b>${s.processed}</b></div>
+        <div>Rejeux détectés<b>${s.total_replays}</b></div>
+        <div>Latence moy.<b>${s.avg_latency_ms !== null ? Math.round(s.avg_latency_ms)+'ms' : '—'}</b></div>
+      `;
+
+      const tbody = document.getElementById("webhook-tbody");
+      const emptyEl = document.getElementById("webhook-empty");
+      if (!data.items.length) {
+        tbody.innerHTML = "";
+        emptyEl.style.display = "block";
+      } else {
+        emptyEl.style.display = "none";
+        tbody.innerHTML = data.items.map(w => `
+          <tr>
+            <td>${w.psp}</td>
+            <td>${w.event_type || "—"}</td>
+            <td>${w.status}</td>
+            <td>${w.latency_ms !== null ? w.latency_ms + "ms" : "—"}</td>
+            <td>${w.replay_count > 0 ? "×" + w.replay_count : "—"}</td>
+            <td>${fmtDate(w.received_at)}</td>
+          </tr>
+        `).join("");
+      }
+    } catch (err) { console.error("webhooks load failed", err); }
+  }
+
+  // ---------- Activity feed ----------
+  async function loadActivity() {
+    try {
+      const res = await apiFetch("/api/v1/activity-logs?page_size=20");
+      const data = await res.json();
+      const feedEl = document.getElementById("activity-feed");
+      if (!data.items.length) {
+        feedEl.innerHTML = '<div class="empty-state">Aucun événement pour le moment.</div>';
+        return;
+      }
+      feedEl.innerHTML = data.items.map(l => `
+        <div class="feed-item">
+          <div class="feed-event-type">${l.event_type}</div>
+          <div class="feed-desc">${l.description}</div>
+          <div class="feed-time">${fmtDate(l.created_at)}</div>
+        </div>
+      `).join("");
+    } catch (err) { console.error("activity load failed", err); }
+  }
+
+  // ---------- Refresh orchestration ----------
+  function refreshAll() {
+    loadRailMap();
+    loadMerchant();
+    loadTransactions(1);
+    loadWebhooks();
+    loadActivity();
+  }
+
+  // ---------- Boot ----------
+  if (token) {
+    showApp();
+  } else {
+    loginScreen.style.display = "flex";
+  }
+})();
+</script>
+</body>
+</html>
