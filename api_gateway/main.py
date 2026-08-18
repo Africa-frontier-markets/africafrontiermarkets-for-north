@@ -41,6 +41,7 @@ _instrument_cache: dict[str, tuple[float, list[dict]]] = {}
 _INSTRUMENT_CACHE_TTL_SECONDS = 300
 _market_history_cache: dict[str, tuple[float, dict]] = {}
 _MARKET_HISTORY_CACHE_TTL_SECONDS = 60
+PUBLIC_MARKET_SYMBOLS = ("AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD")
 
 class TransactionType(str, Enum):
     DEPOSIT = "deposit"
@@ -396,18 +397,34 @@ async def get_market_histories(
     from market_gateway.alpaca_broker import alpaca_broker_client
 
     start = (datetime.now(timezone.utc) - timedelta(days=days + 4)).isoformat()
-    try:
-        payload = await alpaca_broker_client.get_stock_bars(
-            clean_symbols,
+    stock_symbols = [symbol for symbol in clean_symbols if "/" not in symbol]
+    crypto_symbols = [symbol for symbol in clean_symbols if "/" in symbol]
+    limit = min(1000, len(clean_symbols) * (days * (8 if timeframe == "1Hour" else 1) + 8))
+    requests = []
+    if stock_symbols:
+        requests.append(alpaca_broker_client.get_stock_bars(
+            stock_symbols,
             timeframe=timeframe,
             start=start,
             adjustment="all",
             feed="iex",
-            limit=min(1000, len(clean_symbols) * (days * (8 if timeframe == "1Hour" else 1) + 8)),
-        )
+            limit=limit,
+        ))
+    if crypto_symbols:
+        requests.append(alpaca_broker_client.get_crypto_bars(
+            crypto_symbols,
+            timeframe=timeframe,
+            start=start,
+            limit=limit,
+        ))
+    try:
+        payloads = await asyncio.gather(*requests)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Unable to load Alpaca market data: {exc}")
-    bars_by_symbol = payload.get("bars", {}) if isinstance(payload, dict) else {}
+        raise HTTPException(status_code=502, detail=f"Unable to load market data: {exc}")
+    bars_by_symbol: dict[str, list[dict]] = {}
+    for payload in payloads:
+        if isinstance(payload, dict):
+            bars_by_symbol.update(payload.get("bars", {}))
     histories = {
         symbol: normalize_bars(symbol, bars_by_symbol.get(symbol, [])[-days:])
         for symbol in clean_symbols
@@ -465,6 +482,22 @@ async def broker_list_instruments(
         page=page,
         page_size=page_size,
     )
+
+
+@app.get("/api/v1/public/market-products")
+async def public_market_products():
+    """Return five verified instruments, including supported crypto pairs, without order actions."""
+    tradable_assets = await get_tradable_broker_assets()
+    assets_by_symbol = {str(asset.get("symbol")): asset for asset in tradable_assets}
+    selected_assets = [assets_by_symbol[symbol] for symbol in PUBLIC_MARKET_SYMBOLS if symbol in assets_by_symbol]
+    snapshots = await get_market_histories([str(asset["symbol"]) for asset in selected_assets], days=7)
+    return {
+        "count": len(selected_assets),
+        "symbols": list(PUBLIC_MARKET_SYMBOLS),
+        "assets": selected_assets,
+        "snapshots": snapshots,
+        "orders_enabled": False,
+    }
 
 
 @app.get("/api/v1/broker/market-snapshots")
