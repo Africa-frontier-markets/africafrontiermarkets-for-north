@@ -111,6 +111,14 @@ class AlpacaBrokerClient:
             params={"symbols": ",".join(symbols), **params},
         )
 
+    async def get_crypto_bars(self, symbols: list[str], **params: Any) -> Any:
+        """Return authenticated historical bars for the supported US crypto market."""
+        return await self.market_data_request(
+            "GET",
+            "/v1beta3/crypto/us/bars",
+            params={"symbols": ",".join(symbols), **params},
+        )
+
     async def get_account_positions(self, account_id: str) -> Any:
         return await self.request("GET", f"/v1/trading/accounts/{account_id}/positions")
 
