@@ -13,6 +13,7 @@ def test_public_web_frontend_is_standalone_from_mobile_expo():
     assert "/api/v1/public/market-products" in frontend
     assert "data-filter=\"crypto\"" in page
     assert "Onboarding et protections client" in page
+    assert 'href="/onboarding"' in page
     assert "prestataires de services de paiement" in page
     assert "investment solicitation" in frontend
 
@@ -22,6 +23,8 @@ def test_gateway_serves_public_markets_and_compliance_routes():
 
     assert '@app.get("/markets")' in source
     assert '@app.get("/compliance")' in source
+    assert '@app.get("/onboarding")' in source
+    assert 'RedirectResponse(url="/#compliance"' in source
     assert "standalone public web experience" in source
     assert "PUBLIC_MARKET_SYMBOLS" in source
     assert '@app.get("/api/v1/public/market-products")' in source

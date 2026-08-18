@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from fastapi import FastAPI, Request, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,6 +207,12 @@ async def public_web_pages():
     if index_path.exists():
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="Public web frontend not found")
+
+
+@app.get("/onboarding")
+async def public_onboarding_page():
+    """Provide a stable public onboarding link that opens the Compliance section."""
+    return RedirectResponse(url="/#compliance", status_code=status.HTTP_302_FOUND)
 
 
 @app.head("/")
