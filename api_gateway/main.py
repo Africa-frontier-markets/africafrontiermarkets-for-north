@@ -188,7 +188,7 @@ PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
 
 @app.get("/")
 async def root():
-    index_path = PUBLIC_DIR / "index.html"
+    index_path = PUBLIC_DIR / "afm-web.html"
     if index_path.exists():
         return FileResponse(index_path)
     return {
@@ -196,6 +196,16 @@ async def root():
         "version": "prod-1.0.0",
         "status": "operational",
     }
+
+
+@app.get("/markets")
+@app.get("/compliance")
+async def public_web_pages():
+    """Serve the standalone public web experience without involving the mobile app."""
+    index_path = PUBLIC_DIR / "afm-web.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Public web frontend not found")
 
 
 @app.head("/")
