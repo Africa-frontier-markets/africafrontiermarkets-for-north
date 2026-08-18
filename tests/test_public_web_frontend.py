@@ -13,6 +13,8 @@ def test_public_web_frontend_is_standalone_from_mobile_expo():
     assert "/api/v1/public/market-products" in frontend
     assert "data-filter=\"crypto\"" in page
     assert "Onboarding et protections client" in page
+    assert "prestataires de services de paiement" in page
+    assert "investment solicitation" in frontend
 
 
 def test_gateway_serves_public_markets_and_compliance_routes():
