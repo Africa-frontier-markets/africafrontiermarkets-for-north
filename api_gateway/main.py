@@ -370,26 +370,30 @@ def normalize_bars(symbol: str, bars: list[dict]) -> dict:
     }
 
 
-async def get_market_histories(symbols: list[str], days: int = 7) -> dict[str, dict]:
+async def get_market_histories(
+    symbols: list[str],
+    days: int = 7,
+    timeframe: str = "1Day",
+) -> dict[str, dict]:
     """Fetch cached daily Alpaca bars once for a bounded equity symbol batch."""
     clean_symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol.strip()})[:25]
     if not clean_symbols:
         return {}
-    cache_key = f"{'|'.join(clean_symbols)}:{days}"
+    cache_key = f"{'|'.join(clean_symbols)}:{days}:{timeframe}"
     cached = _market_history_cache.get(cache_key)
     if cached and time.monotonic() - cached[0] < _MARKET_HISTORY_CACHE_TTL_SECONDS:
         return cached[1]
     from market_gateway.alpaca_broker import alpaca_broker_client
 
-    start = (datetime.now(timezone.utc) - timedelta(days=days + 4)).date().isoformat()
+    start = (datetime.now(timezone.utc) - timedelta(days=days + 4)).isoformat()
     try:
         payload = await alpaca_broker_client.get_stock_bars(
             clean_symbols,
-            timeframe="1Day",
+            timeframe=timeframe,
             start=start,
             adjustment="all",
             feed="iex",
-            limit=min(1000, len(clean_symbols) * (days + 4)),
+            limit=min(1000, len(clean_symbols) * (days * (8 if timeframe == "1Hour" else 1) + 8)),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Unable to load Alpaca market data: {exc}")
@@ -466,13 +470,20 @@ async def broker_market_snapshots(
 @app.get("/api/v1/broker/instruments/{symbol}/history")
 async def broker_instrument_history(
     symbol: str,
-    days: int = Query(default=30, ge=5, le=90),
+    period: str = Query(default="1M", pattern="^(1D|1W|1M|1Y)$"),
 ):
     """Return historical Alpaca daily bars for one market instrument. No order is created."""
     normalized_symbol = symbol.strip().upper()
     if not normalized_symbol.replace("-", "").replace(".", "").isalnum():
         raise HTTPException(status_code=400, detail="Invalid market symbol")
-    history = await get_market_histories([normalized_symbol], days=days)
+    periods = {
+        "1D": {"days": 1, "timeframe": "1Hour"},
+        "1W": {"days": 7, "timeframe": "1Hour"},
+        "1M": {"days": 30, "timeframe": "1Day"},
+        "1Y": {"days": 365, "timeframe": "1Day"},
+    }
+    config = periods[period]
+    history = await get_market_histories([normalized_symbol], **config)
     return history.get(normalized_symbol, normalize_bars(normalized_symbol, []))
 
 
