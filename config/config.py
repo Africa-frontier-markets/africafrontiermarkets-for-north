@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     alpaca_paper: bool = True
     alpaca_broker_base_url: str = "https://broker-api.sandbox.alpaca.markets"
     alpaca_auth_url: str = "https://authx.sandbox.alpaca.markets/v1/oauth2/token"
+    alpaca_market_data_base_url: str = "https://data.sandbox.alpaca.markets"
 
     # Webhook Secrets
     kora_webhook_secret: str | None = None

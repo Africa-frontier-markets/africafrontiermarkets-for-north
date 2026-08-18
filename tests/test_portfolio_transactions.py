@@ -64,3 +64,20 @@ def test_paginate_instruments_filters_real_metadata_before_slicing():
 
     assert total == 1
     assert page == [{"symbol": "AFRM", "name": "Affirm Holdings", "exchange": "NASDAQ"}]
+
+
+def test_normalize_bars_calculates_last_price_and_daily_variation():
+    from api_gateway.main import normalize_bars
+
+    snapshot = normalize_bars(
+        "AAPL",
+        [
+            {"t": "2026-08-15T00:00:00Z", "o": 10, "h": 12, "l": 9, "c": 10, "v": 100},
+            {"t": "2026-08-16T00:00:00Z", "o": 10, "h": 12, "l": 10, "c": 11, "v": 110},
+        ],
+    )
+
+    assert snapshot["last_price"] == 11
+    assert snapshot["previous_close"] == 10
+    assert snapshot["change"] == 1
+    assert snapshot["change_percent"] == 10

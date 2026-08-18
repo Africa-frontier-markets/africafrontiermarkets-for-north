@@ -30,11 +30,13 @@ class AlpacaBrokerClient:
         client_secret: str | None = None,
         base_url: str | None = None,
         auth_url: str | None = None,
+        market_data_base_url: str | None = None,
     ) -> None:
         self.client_id = client_id or settings.alpaca_api_key
         self.client_secret = client_secret or settings.alpaca_secret_key
         self.base_url = (base_url or settings.alpaca_broker_base_url).rstrip("/")
         self.auth_url = auth_url or settings.alpaca_auth_url
+        self.market_data_base_url = (market_data_base_url or settings.alpaca_market_data_base_url).rstrip("/")
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
 
@@ -78,6 +80,16 @@ class AlpacaBrokerClient:
                 return None
             return resp.json()
 
+    async def market_data_request(self, method: str, path: str, **kwargs: Any) -> Any:
+        """Call the Alpaca Market Data API with the cached Broker bearer token."""
+        token = await self.token()
+        headers = kwargs.pop("headers", {})
+        headers["Authorization"] = f"Bearer {token}"
+        async with httpx.AsyncClient(base_url=self.market_data_base_url, timeout=30) as client:
+            resp = await client.request(method, path, headers=headers, **kwargs)
+            resp.raise_for_status()
+            return resp.json()
+
     # -- Convenience wrappers -------------------------------------------------
     async def list_accounts(self, **params: Any) -> Any:
         return await self.request("GET", "/v1/accounts", params=params)
@@ -90,6 +102,14 @@ class AlpacaBrokerClient:
 
     async def list_assets(self, **params: Any) -> Any:
         return await self.request("GET", "/v1/assets", params=params)
+
+    async def get_stock_bars(self, symbols: list[str], **params: Any) -> Any:
+        """Return authenticated historical daily bars for US equity symbols."""
+        return await self.market_data_request(
+            "GET",
+            "/v2/stocks/bars",
+            params={"symbols": ",".join(symbols), **params},
+        )
 
     async def get_account_positions(self, account_id: str) -> Any:
         return await self.request("GET", f"/v1/trading/accounts/{account_id}/positions")
