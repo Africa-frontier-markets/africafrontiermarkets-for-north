@@ -5,7 +5,7 @@ def test_trading_api_client_requires_a_dedicated_key_pair():
     client = AlpacaTradingClient(api_key="trading-key", api_secret="trading-secret")
 
     assert client.configured is True
-    assert client.base_url == "https://paper-api.alpaca.markets"
+    assert client.base_url == "https://api.alpaca.markets"
     assert client.market_data_base_url == "https://data.alpaca.markets"
     assert client._headers() == {
         "APCA-API-KEY-ID": "trading-key",
