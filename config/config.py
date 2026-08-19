@@ -79,7 +79,9 @@ class Settings(BaseSettings):
     # Alpaca Trading API — dedicated key pair, never shared with Broker OAuth credentials.
     alpaca_trading_api_key: str | None = None
     alpaca_trading_api_secret: str | None = None
-    alpaca_trading_base_url: str = "https://paper-api.alpaca.markets"
+    # AFM uses a dedicated Live Trading API key pair; write operations remain
+    # blocked by the Trading API client until separately approved.
+    alpaca_trading_base_url: str = "https://api.alpaca.markets"
     alpaca_trading_market_data_base_url: str = "https://data.alpaca.markets"
 
     # Webhook Secrets
