@@ -13,6 +13,17 @@ def test_trading_api_client_requires_a_dedicated_key_pair():
     }
 
 
+def test_trading_api_client_pins_live_endpoint_despite_legacy_paper_setting(monkeypatch):
+    monkeypatch.setattr(
+        "market_gateway.alpaca_trading.settings.alpaca_trading_base_url",
+        "https://paper-api.alpaca.markets",
+    )
+
+    client = AlpacaTradingClient(api_key="trading-key", api_secret="trading-secret")
+
+    assert client.base_url == "https://api.alpaca.markets"
+
+
 def test_trading_api_client_rejects_order_writes_during_transition():
     import asyncio
 
