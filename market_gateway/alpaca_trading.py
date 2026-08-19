@@ -14,7 +14,14 @@ from config.config import settings
 
 
 class AlpacaTradingClient:
-    """Minimal, read-only client for Alpaca Trading and Market Data APIs."""
+    """Minimal, read-only client for Alpaca Trading and Market Data APIs.
+
+    AFM's current Trading key pair belongs to the Live environment.  The
+    endpoint is deliberately pinned here so a legacy Paper environment
+    variable cannot silently route that key pair to the wrong account.
+    """
+
+    LIVE_TRADING_BASE_URL = "https://api.alpaca.markets"
 
     def __init__(
         self,
@@ -25,7 +32,7 @@ class AlpacaTradingClient:
     ) -> None:
         self.api_key = api_key or settings.alpaca_trading_api_key
         self.api_secret = api_secret or settings.alpaca_trading_api_secret
-        self.base_url = (base_url or settings.alpaca_trading_base_url).rstrip("/")
+        self.base_url = (base_url or self.LIVE_TRADING_BASE_URL).rstrip("/")
         self.market_data_base_url = (
             market_data_base_url or settings.alpaca_trading_market_data_base_url
         ).rstrip("/")
