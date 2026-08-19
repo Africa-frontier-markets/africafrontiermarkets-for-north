@@ -331,9 +331,9 @@ async def broker_list_orders(account_id: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-async def get_tradable_broker_assets(asset_class: str | None = None) -> list[dict]:
-    """Fetch and cache active, tradable Broker API assets for a short interval."""
-    from market_gateway.alpaca_broker import alpaca_broker_client
+async def get_tradable_trading_assets(asset_class: str | None = None) -> list[dict]:
+    """Fetch and cache active, tradable assets from the read-only Trading API."""
+    from market_gateway.alpaca_trading import alpaca_trading_client
 
     cache_key = asset_class or "all"
     cached = _instrument_cache.get(cache_key)
@@ -343,7 +343,7 @@ async def get_tradable_broker_assets(asset_class: str | None = None) -> list[dic
         params = {"status": "active"}
         if asset_class:
             params["asset_class"] = asset_class
-        assets = await alpaca_broker_client.list_assets(**params)
+        assets = await alpaca_trading_client.list_assets(**params)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc))
     tradable_assets = [asset for asset in assets if asset.get("tradable") is True] if isinstance(assets, list) else []
@@ -386,7 +386,7 @@ async def get_market_histories(
     days: int = 7,
     timeframe: str = "1Day",
 ) -> dict[str, dict]:
-    """Fetch cached daily Alpaca bars once for a bounded equity symbol batch."""
+    """Fetch cached daily Trading API bars for a bounded equity/crypto batch."""
     clean_symbols = sorted({symbol.strip().upper() for symbol in symbols if symbol.strip()})[:25]
     if not clean_symbols:
         return {}
@@ -394,7 +394,7 @@ async def get_market_histories(
     cached = _market_history_cache.get(cache_key)
     if cached and time.monotonic() - cached[0] < _MARKET_HISTORY_CACHE_TTL_SECONDS:
         return cached[1]
-    from market_gateway.alpaca_broker import alpaca_broker_client
+    from market_gateway.alpaca_trading import alpaca_trading_client
 
     start = (datetime.now(timezone.utc) - timedelta(days=days + 4)).isoformat()
     stock_symbols = [symbol for symbol in clean_symbols if "/" not in symbol]
@@ -402,7 +402,7 @@ async def get_market_histories(
     limit = min(1000, len(clean_symbols) * (days * (8 if timeframe == "1Hour" else 1) + 8))
     requests = []
     if stock_symbols:
-        requests.append(alpaca_broker_client.get_stock_bars(
+        requests.append(alpaca_trading_client.get_stock_bars(
             stock_symbols,
             timeframe=timeframe,
             start=start,
@@ -411,7 +411,7 @@ async def get_market_histories(
             limit=limit,
         ))
     if crypto_symbols:
-        requests.append(alpaca_broker_client.get_crypto_bars(
+        requests.append(alpaca_trading_client.get_crypto_bars(
             crypto_symbols,
             timeframe=timeframe,
             start=start,
@@ -420,7 +420,7 @@ async def get_market_histories(
     try:
         payloads = await asyncio.gather(*requests)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Unable to load market data: {exc}")
+        raise HTTPException(status_code=502, detail=f"Unable to load Trading API market data: {exc}")
     bars_by_symbol: dict[str, list[dict]] = {}
     for payload in payloads:
         if isinstance(payload, dict):
@@ -447,15 +447,15 @@ def paginate_instruments(assets: list[dict], query: str, page: int, page_size: i
     return assets[offset : offset + page_size], total_count
 
 
-@app.get("/api/v1/broker/assets")
-async def broker_list_assets(
+@app.get("/api/v1/trading/assets")
+async def trading_list_assets(
     asset_class: str | None = Query(default=None, max_length=50),
     query: str = Query(default="", max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
 ):
-    """List active, tradable Alpaca instruments through a filtered, paginated response."""
-    tradable_assets = await get_tradable_broker_assets(asset_class)
+    """List active, tradable Trading API instruments through a filtered, paginated response."""
+    tradable_assets = await get_tradable_trading_assets(asset_class)
     assets, total_count = paginate_instruments(tradable_assets, query, page, page_size)
     return {
         "count": len(assets),
@@ -468,15 +468,26 @@ async def broker_list_assets(
     }
 
 
-@app.get("/api/v1/broker/instruments")
-async def broker_list_instruments(
+@app.get("/api/v1/broker/assets", include_in_schema=False)
+async def legacy_broker_list_assets(
     asset_class: str | None = Query(default=None, max_length=50),
     query: str = Query(default="", max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
 ):
-    """Frontend-friendly alias for the validated tradable instrument list."""
-    return await broker_list_assets(
+    """Legacy alias retained temporarily for existing clients."""
+    return await trading_list_assets(asset_class, query, page, page_size)
+
+
+@app.get("/api/v1/trading/instruments")
+async def trading_list_instruments(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
+    """Frontend-friendly Trading API instrument list."""
+    return await trading_list_assets(
         asset_class=asset_class,
         query=query,
         page=page,
@@ -487,7 +498,7 @@ async def broker_list_instruments(
 @app.get("/api/v1/public/market-products")
 async def public_market_products():
     """Return five verified instruments, including supported crypto pairs, without order actions."""
-    tradable_assets = await get_tradable_broker_assets()
+    tradable_assets = await get_tradable_trading_assets()
     assets_by_symbol = {str(asset.get("symbol")): asset for asset in tradable_assets}
     selected_assets = [assets_by_symbol[symbol] for symbol in PUBLIC_MARKET_SYMBOLS if symbol in assets_by_symbol]
     snapshots = await get_market_histories([str(asset["symbol"]) for asset in selected_assets], days=7)
@@ -500,14 +511,33 @@ async def public_market_products():
     }
 
 
-@app.get("/api/v1/broker/market-snapshots")
-async def broker_market_snapshots(
+@app.get("/api/v1/broker/instruments", include_in_schema=False)
+async def legacy_broker_list_instruments(
+    asset_class: str | None = Query(default=None, max_length=50),
+    query: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+):
+    """Legacy alias retained temporarily for existing clients."""
+    return await trading_list_instruments(asset_class, query, page, page_size)
+
+
+@app.get("/api/v1/trading/market-snapshots")
+async def trading_market_snapshots(
     symbols: str = Query(..., min_length=1, max_length=500),
 ):
-    """Return bounded, cache-backed Alpaca price snapshots for catalogue sparklines."""
+    """Return bounded, cache-backed Trading API price snapshots for catalogue sparklines."""
     requested = [symbol for symbol in symbols.split(",") if symbol.strip()]
     histories = await get_market_histories(requested, days=7)
     return {"snapshots": histories}
+
+
+@app.get("/api/v1/broker/market-snapshots", include_in_schema=False)
+async def legacy_broker_market_snapshots(
+    symbols: str = Query(..., min_length=1, max_length=500),
+):
+    """Legacy alias retained temporarily for existing clients."""
+    return await trading_market_snapshots(symbols)
 
 
 @app.get("/api/v1/broker/instruments/{symbol}/history")

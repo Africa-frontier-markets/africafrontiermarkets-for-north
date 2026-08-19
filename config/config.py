@@ -68,13 +68,19 @@ class Settings(BaseSettings):
     kora_webhook_secret: str | None = None
     fincra_webhook_secret: str | None = None
 
-    # Alpaca Trading / Broker API
+    # Legacy Alpaca Broker API — retained temporarily for existing direct-account routes.
     alpaca_api_key: str | None = None
     alpaca_secret_key: str | None = None
     alpaca_paper: bool = True
     alpaca_broker_base_url: str = "https://broker-api.sandbox.alpaca.markets"
     alpaca_auth_url: str = "https://authx.sandbox.alpaca.markets/v1/oauth2/token"
     alpaca_market_data_base_url: str = "https://data.sandbox.alpaca.markets"
+
+    # Alpaca Trading API — dedicated key pair, never shared with Broker OAuth credentials.
+    alpaca_trading_api_key: str | None = None
+    alpaca_trading_api_secret: str | None = None
+    alpaca_trading_base_url: str = "https://paper-api.alpaca.markets"
+    alpaca_trading_market_data_base_url: str = "https://data.alpaca.markets"
 
     # Webhook Secrets
     kora_webhook_secret: str | None = None
