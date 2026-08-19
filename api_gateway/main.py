@@ -485,13 +485,15 @@ async def trading_list_instruments(
     query: str = Query(default="", max_length=100),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
+    kind: str | None = Query(default=None, max_length=50, include_in_schema=False),
+    limit: int | None = Query(default=None, ge=1, le=100, include_in_schema=False),
 ):
-    """Frontend-friendly Trading API instrument list."""
+    """Frontend-friendly Trading API instrument list with legacy read-query aliases."""
     return await trading_list_assets(
-        asset_class=asset_class,
+        asset_class=asset_class or kind,
         query=query,
         page=page,
-        page_size=page_size,
+        page_size=limit or page_size,
     )
 
 
@@ -530,6 +532,14 @@ async def trading_market_snapshots(
     requested = [symbol for symbol in symbols.split(",") if symbol.strip()]
     histories = await get_market_histories(requested, days=7)
     return {"snapshots": histories}
+
+
+@app.get("/api/v1/trading/snapshots", include_in_schema=False)
+async def legacy_trading_snapshots(
+    symbols: str = Query(..., min_length=1, max_length=500),
+):
+    """Read-only compatibility alias for market snapshot clients."""
+    return await trading_market_snapshots(symbols)
 
 
 @app.get("/api/v1/broker/market-snapshots", include_in_schema=False)

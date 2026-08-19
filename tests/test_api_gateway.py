@@ -24,4 +24,5 @@ def test_trading_read_routes_are_declared_without_order_routes():
     assert "/api/v1/trading/assets" in paths
     assert "/api/v1/trading/instruments" in paths
     assert "/api/v1/trading/market-snapshots" in paths
+    assert "/api/v1/trading/snapshots" in paths
     assert "/api/v1/trading/orders" not in paths
