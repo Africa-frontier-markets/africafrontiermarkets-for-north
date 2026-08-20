@@ -34,6 +34,7 @@ from config.telemetry import app_info, http_requests_total, http_request_duratio
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
+from payment_hub.kora_client import KoraClientError, get_kora_balance
 from payment_hub.models import BrokerAccountLink, VirtualAccount, VirtualLedgerEntry, VirtualPosition
 from api_gateway.auth import router as auth_router
 
@@ -800,6 +801,17 @@ async def get_linked_broker_account(
     return link
 
 
+@app.get("/api/v1/kora/balance")
+async def get_kora_balance_readonly(
+    _: uuid.UUID = Depends(get_current_backoffice_admin_id),
+):
+    """Return Kora payment-operations balances to an authorised AFM admin only."""
+    try:
+        return await get_kora_balance(settings)
+    except KoraClientError as exc:
+        raise HTTPException(status_code=502, detail="Payment balance is temporarily unavailable") from exc
+
+
 @app.post("/api/v1/broker/account-link", status_code=status.HTTP_201_CREATED)
 async def link_broker_account(
     payload: BrokerAccountLinkRequest,
@@ -1061,7 +1073,7 @@ async def get_payment(
 @app.post("/webhooks/kora")
 async def kora_webhook(request: Request):
     payload = await request.body()
-    signature = request.headers.get("X-Kora-Signature", "")
+    signature = request.headers.get("X-Korapay-Signature") or request.headers.get("X-Kora-Signature", "")
     if not await payment_service.verify_webhook("kora", payload, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
     data = await request.json()

@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Payment Providers
     kora_api_key: str | None = None
     kora_secret_key: str | None = None
+    kora_encryption_key: str | None = None
     fincra_api_key: str | None = None
     fincra_secret_key: str | None = None
     flutterwave_public_key: str | None = None
