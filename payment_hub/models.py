@@ -86,3 +86,63 @@ class BrokerAccountLink(Base):
     status = Column(String(20), nullable=False, default="pending")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class VirtualAccount(Base):
+    """AFM-owned account that partitions the transitional omnibus ledger."""
+
+    __tablename__ = "virtual_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, default="active")
+    currency = Column(String(3), nullable=False, default="USD")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class VirtualPosition(Base):
+    """Current quantity and cost projection belonging to one virtual account."""
+
+    __tablename__ = "virtual_positions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    virtual_account_id = Column(UUID(as_uuid=True), ForeignKey("virtual_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    symbol = Column(String(32), nullable=False)
+    quantity = Column(Numeric(28, 10), nullable=False, default=Decimal("0"))
+    average_cost = Column(Numeric(19, 8), nullable=False, default=Decimal("0"))
+    currency = Column(String(3), nullable=False, default="USD")
+    position_metadata = Column(JSON, default=dict)
+    reconciled_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("uq_virtual_positions_account_symbol", "virtual_account_id", "symbol", unique=True),
+    )
+
+
+class VirtualLedgerEntry(Base):
+    """Immutable cash, execution, fee, corporate-action or reconciliation entry."""
+
+    __tablename__ = "virtual_ledger_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    virtual_account_id = Column(UUID(as_uuid=True), ForeignKey("virtual_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    entry_type = Column(String(40), nullable=False)
+    direction = Column(String(8), nullable=False)
+    amount = Column(Numeric(19, 8), nullable=False)
+    currency = Column(String(3), nullable=False, default="USD")
+    symbol = Column(String(32))
+    quantity = Column(Numeric(28, 10))
+    reference_type = Column(String(40))
+    reference_id = Column(String(128))
+    description = Column(String(255))
+    entry_metadata = Column(JSON, default=dict)
+    occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index("ix_virtual_ledger_account_occurred", "virtual_account_id", "occurred_at"),
+        Index("ix_virtual_ledger_reference", "reference_type", "reference_id"),
+    )
