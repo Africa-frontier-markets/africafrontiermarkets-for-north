@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, ge=5, le=60)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
     mobile_oauth_exchange_secret: str | None = Field(default=None, min_length=48)
+    # Comma-separated AFM user UUIDs allowed to view aggregate virtual-ledger operations.
+    # Empty by default: the back-office remains closed until explicitly configured.
+    afm_backoffice_admin_subjects: str = ""
 
     @field_validator("secret_key")
     @classmethod

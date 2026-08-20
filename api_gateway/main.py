@@ -29,7 +29,7 @@ from config.exceptions import (
 )
 from config.logging_config import configure_logging
 from config.rate_limit import rate_limiter
-from config.security import decode_token, get_current_user_id, create_access_token
+from config.security import decode_token, get_current_backoffice_admin_id, get_current_user_id, create_access_token
 from config.telemetry import app_info, http_requests_total, http_request_duration, get_metrics_response, CONTENT_TYPE_LATEST
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
@@ -734,6 +734,49 @@ async def get_virtual_portfolio_transactions(
         "count": len(transactions),
         "next_page_token": str(entries[-1].id) if len(entries) == limit and entries else None,
         "read_only": True,
+    }
+
+
+@app.get("/api/v1/trading/backoffice/reconciliation")
+async def get_virtual_reconciliation_summary(
+    _: uuid.UUID = Depends(get_current_backoffice_admin_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return partner-neutral, aggregate virtual-ledger controls for AFM operations."""
+    accounts = (await db.execute(select(VirtualAccount).order_by(VirtualAccount.created_at.desc()).limit(100))).scalars().all()
+    rows: list[dict] = []
+    total_cash = Decimal("0")
+    total_positions = 0
+    pending = 0
+    for account in accounts:
+        cash = await get_virtual_cash_balance(account.id, db)
+        positions = (await db.execute(select(VirtualPosition).where(VirtualPosition.virtual_account_id == account.id))).scalars().all()
+        ledger_entries = (await db.execute(select(VirtualLedgerEntry.id).where(VirtualLedgerEntry.virtual_account_id == account.id))).scalars().all()
+        last_reconciled = max((position.reconciled_at for position in positions if position.reconciled_at), default=None)
+        reconciliation_status = "reconciled" if last_reconciled else "pending"
+        total_cash += cash
+        total_positions += len(positions)
+        pending += int(reconciliation_status == "pending")
+        rows.append({
+            "account_id": virtual_account_public_id(account),
+            "status": account.status,
+            "currency": account.currency,
+            "cash_balance": str(cash),
+            "position_count": len(positions),
+            "ledger_entry_count": len(ledger_entries),
+            "reconciliation_status": reconciliation_status,
+            "last_reconciled_at": last_reconciled.isoformat() if last_reconciled else None,
+        })
+    return {
+        "accounts": rows,
+        "summary": {
+            "account_count": len(rows),
+            "pending_reconciliation_count": pending,
+            "position_count": total_positions,
+            "aggregate_cash_balance": str(total_cash),
+        },
+        "read_only": True,
+        "partner_details_exposed": False,
     }
 
 
