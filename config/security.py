@@ -5,6 +5,7 @@ AFM Security — JWT, bcrypt, HMAC, API keys
 
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -74,13 +75,14 @@ def generate_api_secret() -> str:
 
 
 def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
-    expected = hmac.new(
-        secret.encode(),
-        payload,
-        hashlib.sha256,
-    ).hexdigest()
     expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    return hmac.compare_digest(expected, signature.strip())
+
+
+def verify_kora_webhook_signature(data: dict, signature: str, secret: str) -> bool:
+    """Verify Kora's HMAC-SHA256 over the canonical JSON representation of data."""
+    canonical_data = json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return verify_webhook_signature(canonical_data, signature, secret)
 
 
 def hash_idempotency_key(key: str) -> str:
