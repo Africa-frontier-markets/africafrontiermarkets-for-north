@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.config import get_settings
@@ -33,7 +34,7 @@ from config.telemetry import app_info, http_requests_total, http_request_duratio
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
-from payment_hub.models import BrokerAccountLink
+from payment_hub.models import BrokerAccountLink, VirtualAccount, VirtualLedgerEntry, VirtualPosition
 from api_gateway.auth import router as auth_router
 
 logger = configure_logging()
@@ -557,7 +558,7 @@ async def broker_instrument_history(
 ):
     """Return historical Alpaca daily bars for one market instrument. No order is created."""
     normalized_symbol = symbol.strip().upper()
-    if not normalized_symbol.replace("-", "").replace(".", "").isalnum():
+    if not normalized_symbol.replace("-", "").replace(".", "").replace("/", "").isalnum():
         raise HTTPException(status_code=400, detail="Invalid market symbol")
     periods = {
         "1D": {"days": 1, "timeframe": "1Hour"},
@@ -568,6 +569,172 @@ async def broker_instrument_history(
     config = periods[period]
     history = await get_market_histories([normalized_symbol], **config)
     return history.get(normalized_symbol, normalize_bars(normalized_symbol, []))
+
+
+@app.get("/api/v1/trading/instruments/{symbol:path}/history")
+async def trading_instrument_history(
+    symbol: str,
+    period: str = Query(default="1M", pattern="^(1D|1W|1M|1Y)$"),
+):
+    """Read-only Trading API history route for mobile and public market clients."""
+    return await broker_instrument_history(symbol, period)
+
+
+def virtual_account_public_id(account: VirtualAccount) -> str:
+    """Return a stable display reference without exposing the database UUID."""
+    return f"AFM-VIRTUAL-{str(account.id).split('-')[0].upper()}"
+
+
+async def get_or_create_virtual_account(user_id: uuid.UUID, db: AsyncSession) -> VirtualAccount:
+    result = await db.execute(select(VirtualAccount).where(VirtualAccount.user_id == user_id))
+    account = result.scalar_one_or_none()
+    if account is not None:
+        return account
+
+    account = VirtualAccount(user_id=user_id, status="active", currency="USD")
+    db.add(account)
+    try:
+        await db.commit()
+        await db.refresh(account)
+        return account
+    except IntegrityError:
+        await db.rollback()
+        result = await db.execute(select(VirtualAccount).where(VirtualAccount.user_id == user_id))
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            raise HTTPException(status_code=503, detail="Virtual account provisioning is temporarily unavailable")
+        return existing
+
+
+async def get_virtual_cash_balance(account_id: uuid.UUID, db: AsyncSession) -> Decimal:
+    result = await db.execute(
+        select(VirtualLedgerEntry.direction, VirtualLedgerEntry.amount).where(
+            VirtualLedgerEntry.virtual_account_id == account_id,
+        ),
+    )
+    balance = Decimal("0")
+    for direction, amount in result.all():
+        signed_amount = Decimal(str(amount or 0))
+        balance += signed_amount if direction == "credit" else -signed_amount
+    return balance
+
+
+async def build_virtual_portfolio(account: VirtualAccount, db: AsyncSession) -> dict:
+    result = await db.execute(
+        select(VirtualPosition).where(VirtualPosition.virtual_account_id == account.id).order_by(VirtualPosition.symbol),
+    )
+    virtual_positions = result.scalars().all()
+    histories = await get_market_histories([position.symbol for position in virtual_positions], days=7) if virtual_positions else {}
+    positions: list[dict] = []
+    total_market_value = Decimal("0")
+    total_unrealized_pl = Decimal("0")
+
+    for position in virtual_positions:
+        quantity = Decimal(str(position.quantity or 0))
+        average_cost = Decimal(str(position.average_cost or 0))
+        snapshot = histories.get(position.symbol, {})
+        last_price = snapshot.get("last_price")
+        current_price = Decimal(str(last_price)) if last_price is not None else None
+        market_value = quantity * current_price if current_price is not None else None
+        cost_basis = quantity * average_cost
+        unrealized_pl = market_value - cost_basis if market_value is not None else None
+        if market_value is not None:
+            total_market_value += market_value
+        if unrealized_pl is not None:
+            total_unrealized_pl += unrealized_pl
+        positions.append({
+            "asset_id": str(position.id),
+            "symbol": position.symbol,
+            "asset_class": "crypto" if "/" in position.symbol else "us_equity",
+            "qty": str(quantity),
+            "market_value": str(market_value) if market_value is not None else None,
+            "cost_basis": str(cost_basis),
+            "unrealized_pl": str(unrealized_pl) if unrealized_pl is not None else None,
+            "unrealized_plpc": str(unrealized_pl / cost_basis) if unrealized_pl is not None and cost_basis else None,
+            "current_price": str(current_price) if current_price is not None else None,
+        })
+
+    cash = await get_virtual_cash_balance(account.id, db)
+    equity = cash + total_market_value
+    return {
+        "account_id": virtual_account_public_id(account),
+        "account": {
+            "id": virtual_account_public_id(account),
+            "account_number": virtual_account_public_id(account),
+            "status": account.status,
+            "currency": account.currency,
+            "cash": str(cash),
+            "equity": str(equity),
+            "buying_power": str(max(cash, Decimal("0"))),
+            "portfolio_value": str(equity),
+            "unrealized_pl": str(total_unrealized_pl),
+        },
+        "positions": positions,
+        "reconciliation": {"status": "pending", "last_reconciled_at": None},
+        "read_only": True,
+    }
+
+
+@app.get("/api/v1/trading/portfolio")
+async def get_virtual_portfolio(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated AFM user’s virtual-account projection without an order action."""
+    account = await get_or_create_virtual_account(user_id, db)
+    return await build_virtual_portfolio(account, db)
+
+
+@app.get("/api/v1/trading/portfolio/transactions")
+async def get_virtual_portfolio_transactions(
+    limit: int = Query(default=50, ge=1, le=100),
+    page_token: str | None = Query(default=None, min_length=1, max_length=64),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return immutable virtual-ledger entries for the authenticated virtual account."""
+    account = await get_or_create_virtual_account(user_id, db)
+    statement = select(VirtualLedgerEntry).where(VirtualLedgerEntry.virtual_account_id == account.id)
+    if page_token:
+        try:
+            token_id = uuid.UUID(page_token)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid transaction page token")
+        token_result = await db.execute(
+            select(VirtualLedgerEntry).where(
+                VirtualLedgerEntry.id == token_id,
+                VirtualLedgerEntry.virtual_account_id == account.id,
+            ),
+        )
+        token_entry = token_result.scalar_one_or_none()
+        if token_entry is None:
+            raise HTTPException(status_code=400, detail="Invalid transaction page token")
+        statement = statement.where(or_(
+            VirtualLedgerEntry.occurred_at < token_entry.occurred_at,
+            and_(
+                VirtualLedgerEntry.occurred_at == token_entry.occurred_at,
+                VirtualLedgerEntry.id < token_entry.id,
+            ),
+        ))
+    result = await db.execute(statement.order_by(VirtualLedgerEntry.occurred_at.desc(), VirtualLedgerEntry.id.desc()).limit(limit))
+    entries = result.scalars().all()
+    transactions = [{
+        "id": str(entry.id),
+        "activity_type": entry.entry_type.upper(),
+        "symbol": entry.symbol,
+        "side": entry.direction,
+        "quantity": str(entry.quantity) if entry.quantity is not None else None,
+        "amount": str(entry.amount if entry.direction == "credit" else -entry.amount),
+        "occurred_at": entry.occurred_at.isoformat(),
+        "description": entry.description or entry.entry_type.replace("_", " ").capitalize(),
+    } for entry in entries]
+    return {
+        "account_id": virtual_account_public_id(account),
+        "transactions": transactions,
+        "count": len(transactions),
+        "next_page_token": str(entries[-1].id) if len(entries) == limit and entries else None,
+        "read_only": True,
+    }
 
 
 class BrokerAccountLinkRequest(BaseModel):
