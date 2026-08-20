@@ -76,8 +76,17 @@ async def test_kora_signature_uses_data_object(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_kora_webhook_uses_kora_secret_key_fallback(monkeypatch):
+    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=None, kora_secret_key=SECRET))
+    data = {"reference": "evt-secret-key", "amount": 100, "currency": "XOF"}
+    body = {"event": "payment.success", "data": data}
+    response = await kora_webhook(make_request(body, sign(data)), FakeDb())
+    assert response == {"status": "received", "event_id": "evt-secret-key"}
+
+
+@pytest.mark.asyncio
 async def test_kora_webhook_receives_and_records_once(monkeypatch):
-    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET))
+    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET, kora_secret_key=None))
     data = {"reference": "evt-1", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
     db = FakeDb()
@@ -89,7 +98,7 @@ async def test_kora_webhook_receives_and_records_once(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_kora_webhook_duplicate_is_acknowledged_without_processing(monkeypatch):
-    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET))
+    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET, kora_secret_key=None))
     data = {"reference": "evt-duplicate", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
     db = FakeDb(duplicate=True)
@@ -100,7 +109,7 @@ async def test_kora_webhook_duplicate_is_acknowledged_without_processing(monkeyp
 
 @pytest.mark.asyncio
 async def test_kora_webhook_rejects_invalid_signature(monkeypatch):
-    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET))
+    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(kora_webhook_secret=SECRET, kora_secret_key=None))
     data = {"reference": "evt-invalid", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
     with pytest.raises(Exception) as exc_info:

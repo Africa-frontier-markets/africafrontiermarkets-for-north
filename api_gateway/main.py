@@ -1100,7 +1100,9 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if not isinstance(signed_data, dict):
         raise HTTPException(status_code=400, detail="Webhook data must be an object")
 
-    webhook_secret = get_settings().kora_webhook_secret
+    settings = get_settings()
+    # Kora signs webhooks with the merchant Secret Key; KORA_WEBHOOK_SECRET is an optional alias.
+    webhook_secret = settings.kora_webhook_secret or settings.kora_secret_key
     if not webhook_secret or not verify_kora_webhook_signature(signed_data, signature, webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
