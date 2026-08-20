@@ -90,6 +90,9 @@ class Settings(BaseSettings):
 
     # Webhook Secrets
     kora_webhook_secret: str | None = None
+    # Optional team notification destination; keep empty on the free baseline.
+    kora_webhook_alert_url: str | None = None
+    kora_webhook_alert_threshold: int = Field(default=3, ge=1, le=20)
     fincra_webhook_secret: str | None = None
 
     # Environment
