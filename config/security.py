@@ -118,3 +118,17 @@ async def get_current_user_id(
         return uuid.UUID(str(sub))
     except ValueError:
         raise AuthenticationError("Token subject is not a valid user id")
+
+
+async def get_current_backoffice_admin_id(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> uuid.UUID:
+    """Allow aggregate operational reads only to explicitly configured AFM administrators."""
+    allowed = {
+        value.strip()
+        for value in get_settings().afm_backoffice_admin_subjects.split(",")
+        if value.strip()
+    }
+    if str(user_id) not in allowed:
+        raise AuthenticationError("Back-office access is not authorized for this session")
+    return user_id
