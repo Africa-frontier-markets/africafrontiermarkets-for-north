@@ -224,6 +224,14 @@ async def sandbox_page():
     raise HTTPException(status_code=404, detail="Sandbox page not found")
 
 
+@app.get("/changelog")
+async def changelog_page():
+    changelog_path = PUBLIC_DIR / "changelog.html"
+    if changelog_path.exists():
+        return FileResponse(changelog_path)
+    raise HTTPException(status_code=404, detail="Changelog page not found")
+
+
 @app.get("/markets")
 @app.get("/compliance")
 async def public_web_pages():
