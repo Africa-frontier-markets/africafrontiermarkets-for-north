@@ -1,0 +1,49 @@
+name: Telegram chat ID lookup
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_webhook:
+        description: "Allow getUpdates only when no production webhook conflict exists"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-chat-id-lookup
+  cancel-in-progress: true
+
+jobs:
+  lookup:
+    name: Read Telegram chat IDs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run safe lookup
+        env:
+          ALLOW_WEBHOOK: ${{ inputs.allow_webhook }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+            echo "Missing repository secret TELEGRAM_BOT_TOKEN" >&2
+            exit 2
+          fi
+          args=()
+          if [ "$ALLOW_WEBHOOK" = "true" ]; then
+            args+=("--allow-webhook")
+          fi
+          python3 scripts/get_telegram_chat_ids.py "${args[@]}"
+
+      - name: Security reminder
+        if: always()
+        run: |
+          echo "The bot token was not printed or written to artifacts."
+          echo "Use the numeric chat_id output only; keep TELEGRAM_BOT_TOKEN in GitHub Secrets."
