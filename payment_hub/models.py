@@ -146,3 +146,19 @@ class VirtualLedgerEntry(Base):
         Index("ix_virtual_ledger_account_occurred", "virtual_account_id", "occurred_at"),
         Index("ix_virtual_ledger_reference", "reference_type", "reference_id"),
     )
+
+
+class KoraWebhookEvent(Base):
+    """Durable receipt record preventing duplicate Kora webhook processing."""
+
+    __tablename__ = "kora_webhook_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    event_id = Column(String(128), nullable=False, unique=True, index=True)
+    event_type = Column(String(80), nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    status = Column(String(20), nullable=False, default="received")
+    payload = Column(JSON, nullable=False, default=dict)
+    received_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    processed_at = Column(DateTime(timezone=True))
+    error_message = Column(String(255))

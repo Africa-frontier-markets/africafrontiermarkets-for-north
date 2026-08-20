@@ -271,7 +271,7 @@ class PaymentService:
 
     async def verify_webhook(self, psp: str, payload: bytes, signature: str) -> bool:
         secrets_map = {
-            "kora": settings.kora_webhook_secret,
+            "kora": settings.kora_webhook_secret or settings.kora_secret_key,
             "fincra": settings.fincra_webhook_secret,
         }
         secret = secrets_map.get(psp)

@@ -3,6 +3,8 @@ AFM API Gateway — FastAPI with real payment endpoint
 """
 
 import asyncio
+import hashlib
+import json
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -29,13 +31,25 @@ from config.exceptions import (
 )
 from config.logging_config import configure_logging
 from config.rate_limit import rate_limiter
-from config.security import decode_token, get_current_backoffice_admin_id, get_current_user_id, create_access_token
+from config.security import (
+    decode_token,
+    get_current_backoffice_admin_id,
+    get_current_user_id,
+    create_access_token,
+    verify_kora_webhook_signature,
+)
 from config.telemetry import app_info, http_requests_total, http_request_duration, get_metrics_response, CONTENT_TYPE_LATEST
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
 from payment_hub.kora_client import KoraClientError, get_kora_balance
-from payment_hub.models import BrokerAccountLink, VirtualAccount, VirtualLedgerEntry, VirtualPosition
+from payment_hub.models import (
+    BrokerAccountLink,
+    KoraWebhookEvent,
+    VirtualAccount,
+    VirtualLedgerEntry,
+    VirtualPosition,
+)
 from api_gateway.auth import router as auth_router
 
 logger = configure_logging()
@@ -1071,14 +1085,57 @@ async def get_payment(
     }
 
 @app.post("/webhooks/kora")
-async def kora_webhook(request: Request):
+async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     payload = await request.body()
     signature = request.headers.get("X-Korapay-Signature") or request.headers.get("X-Kora-Signature", "")
-    if not await payment_service.verify_webhook("kora", payload, signature):
+    try:
+        body = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Malformed webhook payload") from exc
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Webhook payload must be an object")
+
+    signed_data = body.get("data", body)
+    if not isinstance(signed_data, dict):
+        raise HTTPException(status_code=400, detail="Webhook data must be an object")
+
+    settings = get_settings()
+    # Kora signs webhooks with the merchant Secret Key; KORA_WEBHOOK_SECRET is an optional alias.
+    webhook_secret = settings.kora_webhook_secret or settings.kora_secret_key
+    if not webhook_secret or not verify_kora_webhook_signature(signed_data, signature, webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
-    data = await request.json()
-    logger.info("Kora webhook received", event=data.get("event"))
-    return {"status": "received"}
+
+    payload_hash = hashlib.sha256(payload).hexdigest()
+    event_id = str(
+        body.get("id")
+        or signed_data.get("id")
+        or signed_data.get("reference")
+        or payload_hash
+    )[:128]
+    event_type = str(body.get("event") or body.get("type") or "unknown")[:80]
+
+    event = KoraWebhookEvent(
+        event_id=event_id,
+        event_type=event_type,
+        payload_hash=payload_hash,
+        status="received",
+        payload=body,
+    )
+    try:
+        db.add(event)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.execute(
+            select(KoraWebhookEvent).where(KoraWebhookEvent.event_id == event_id)
+        )
+        if existing.scalar_one_or_none() is not None:
+            return {"status": "already_received", "event_id": event_id}
+        raise HTTPException(status_code=503, detail="Webhook idempotency store unavailable")
+
+    logger.info("Kora webhook received", event_type=event_type, event_id=event_id)
+    return {"status": "received", "event_id": event_id}
 
 @app.post("/webhooks/fincra")
 async def fincra_webhook(request: Request):
