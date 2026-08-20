@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,7 @@ from payment_hub.models import (
     VirtualPosition,
 )
 from api_gateway.auth import router as auth_router
+from api_gateway.kora_alerts import notify_kora_failure
 
 logger = configure_logging()
 _instrument_cache: dict[str, tuple[float, list[dict]]] = {}
@@ -213,6 +214,14 @@ async def root():
         "version": "prod-1.0.0",
         "status": "operational",
     }
+
+
+@app.get("/sandbox")
+async def sandbox_page():
+    sandbox_path = PUBLIC_DIR / "sandbox.html"
+    if sandbox_path.exists():
+        return FileResponse(sandbox_path)
+    raise HTTPException(status_code=404, detail="Sandbox page not found")
 
 
 @app.get("/markets")
@@ -1084,6 +1093,17 @@ async def get_payment(
         "created_at": transaction.created_at.isoformat(),
     }
 
+async def process_kora_webhook_business_event(body: dict, event_type: str) -> None:
+    """Run the non-financial webhook business step before marking processed.
+
+    The current AFM phase only validates and journals the event. Payment or
+    payout execution is deliberately not performed by inbound webhooks.
+    """
+    data = body.get("data") if isinstance(body.get("data"), dict) else body
+    if event_type.startswith("payment") and not data.get("reference"):
+        raise ValueError("Payment webhook is missing a reference")
+
+
 @app.post("/webhooks/kora")
 async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     payload = await request.body()
@@ -1101,18 +1121,12 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Webhook data must be an object")
 
     settings = get_settings()
-    # Kora signs webhooks with the merchant Secret Key; KORA_WEBHOOK_SECRET is an optional alias.
     webhook_secret = settings.kora_webhook_secret or settings.kora_secret_key
     if not webhook_secret or not verify_kora_webhook_signature(signed_data, signature, webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     payload_hash = hashlib.sha256(payload).hexdigest()
-    event_id = str(
-        body.get("id")
-        or signed_data.get("id")
-        or signed_data.get("reference")
-        or payload_hash
-    )[:128]
+    event_id = str(body.get("id") or signed_data.get("id") or signed_data.get("reference") or payload_hash)[:128]
     event_type = str(body.get("event") or body.get("type") or "unknown")[:80]
 
     event = KoraWebhookEvent(
@@ -1127,15 +1141,38 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        existing = await db.execute(
-            select(KoraWebhookEvent).where(KoraWebhookEvent.event_id == event_id)
-        )
-        if existing.scalar_one_or_none() is not None:
-            return {"status": "already_received", "event_id": event_id}
+        existing = await db.execute(select(KoraWebhookEvent).where(KoraWebhookEvent.event_id == event_id))
+        existing_event = existing.scalar_one_or_none()
+        if existing_event is not None:
+            return {"status": f"already_{existing_event.status}", "event_id": event_id}
         raise HTTPException(status_code=503, detail="Webhook idempotency store unavailable")
 
-    logger.info("Kora webhook received", event_type=event_type, event_id=event_id)
-    return {"status": "received", "event_id": event_id}
+    try:
+        await process_kora_webhook_business_event(body, event_type)
+        event.status = "processed"
+        event.processed_at = datetime.now(timezone.utc)
+        await db.commit()
+        logger.info("Kora webhook processed", event_type=event_type, event_id=event_id)
+        return {"status": "processed", "event_id": event_id}
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        event.status = "failed"
+        event.error_message = str(exc)[:255]
+        await db.commit()
+        failures = await db.scalar(
+            select(func.count(KoraWebhookEvent.id)).where(
+                KoraWebhookEvent.event_type == event_type,
+                KoraWebhookEvent.status == "failed",
+                KoraWebhookEvent.received_at >= datetime.now(timezone.utc) - timedelta(minutes=5),
+            )
+        )
+        await notify_kora_failure(
+            event_id=event_id,
+            event_type=event_type,
+            failure_count=int(failures or 0),
+            error=str(exc),
+        )
+        raise HTTPException(status_code=500, detail="Webhook processing failed") from exc
 
 @app.post("/webhooks/fincra")
 async def fincra_webhook(request: Request):
