@@ -1107,13 +1107,7 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
         "fx_rate": str(payment.fx_rate),
         "net_source_amount": str(net_source),
         "net_destination_amount": str(net_destination),
-        "fee_breakdown": {
-            "collection": str(payin_fee.quantize(Decimal("0.01"))),
-            "payout": str(payout_fee.quantize(Decimal("0.01"))),
-            "platform": str(afm_fee.quantize(Decimal("0.01"))),
-            "client_psp": str(client_psp_fee.quantize(Decimal("0.01"))),
-            "total": str(total_fees),
-        },
+        "platform_fees": str(total_fees),
         "funds_movement": False,
         "ledger_write": False,
     }

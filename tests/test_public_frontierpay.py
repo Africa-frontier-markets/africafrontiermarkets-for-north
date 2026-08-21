@@ -26,7 +26,7 @@ async def test_public_frontierpay_simulation_is_non_financial():
     assert result["execution_mode"] == "public_preview"
     assert result["funds_movement"] is False
     assert result["ledger_write"] is False
-    assert result["fee_breakdown"]["platform"] == "2000.00"
-    assert result["fee_breakdown"]["total"] == "8000.00"
+    assert result["platform_fees"] == "8000.00"
+    assert "fee_breakdown" not in result
     assert result["net_source_amount"] == "92000.00"
     assert result["net_destination_amount"] == "138000.00"
