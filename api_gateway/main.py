@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import and_, or_, select, func
+from sqlalchemy import and_, or_, select, func, String
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +46,9 @@ from payment_hub.kora_client import KoraClientError, get_kora_balance
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
+    Transaction,
+    PaymentStatus,
+    PSPType,
     VirtualAccount,
     VirtualLedgerEntry,
     VirtualPosition,
@@ -1022,6 +1025,21 @@ class PaymentRequest(BaseModel):
     region: str = Field(default="west_africa")
     metadata: dict = Field(default_factory=dict)
 
+
+class PaymentSimulationRequest(BaseModel):
+    """Non-financial sandbox instruction used by the FrontierPay PSP console."""
+    amount: Decimal = Field(..., ge=Decimal("100000"))
+    source_currency: str = Field(..., min_length=3, max_length=3)
+    beneficiary_currency: str = Field(..., min_length=3, max_length=3)
+    corridor: str = Field(..., pattern="^(ci-ghana|ci-nigeria|benin-nigeria|cameroon-nigeria)$")
+    kaybic_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    kora_payin_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    kora_payout_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    afm_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    fx_rate: Decimal = Field(default=Decimal("1"), gt=0)
+    direction: str = Field(default="payout", pattern="^(payout|payin)$")
+    metadata: dict = Field(default_factory=dict)
+
 class PaymentResponse(BaseModel):
     transaction_id: str
     status: str
@@ -1032,6 +1050,177 @@ class PaymentResponse(BaseModel):
     psp: str
     psp_transaction_id: str | None
     created_at: str
+
+
+def serialize_transaction(transaction: Transaction) -> dict:
+    metadata = transaction.txn_metadata or {}
+    return {
+        "transaction_id": str(transaction.id),
+        "idempotency_key": transaction.idempotency_key,
+        "status": transaction.status.value if hasattr(transaction.status, "value") else str(transaction.status),
+        "amount": str(transaction.amount),
+        "currency": transaction.currency,
+        "fee_amount": str(transaction.fee_amount or 0),
+        "total_fee_amount": str(transaction.total_fee_amount or transaction.fee_amount or 0),
+        "fee_currency": transaction.fee_currency or transaction.currency,
+        "net_amount": str(transaction.net_amount or 0),
+        "psp": transaction.psp.value if hasattr(transaction.psp, "value") else str(transaction.psp),
+        "psp_transaction_id": transaction.psp_transaction_id,
+        "corridor": transaction.corridor,
+        "beneficiary_currency": transaction.beneficiary_currency,
+        "virtual_account_id": str(transaction.virtual_account_id) if transaction.virtual_account_id else None,
+        "ledger_namespace": transaction.ledger_namespace,
+        "segregation": {
+            "funds_perimeter": metadata.get("funds_perimeter", transaction.ledger_namespace),
+            "execution_mode": metadata.get("execution_mode", "unknown"),
+            "balance_affecting": bool(metadata.get("balance_affecting", False)),
+            "ledger_entry_count": metadata.get("ledger_entry_count", 0),
+        },
+        "fee_breakdown": metadata.get("fee_breakdown", {}),
+        "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
+        "updated_at": transaction.updated_at.isoformat() if transaction.updated_at else None,
+        "settled_at": transaction.settled_at.isoformat() if transaction.settled_at else None,
+        "error_message": transaction.error_message,
+    }
+
+
+@app.post("/api/v1/payments/simulate", status_code=status.HTTP_201_CREATED)
+async def simulate_payment(
+    payment: PaymentSimulationRequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a non-financial, auditable sandbox payment intent.
+
+    This route never calls a PSP, never moves money and never changes the cash balance.
+    It only creates an AFM-scoped transaction record and a zero-value ledger journal entry.
+    """
+    source_currency = payment.source_currency.upper()
+    beneficiary_currency = payment.beneficiary_currency.upper()
+    total_fees = (
+        payment.kaybic_fee + payment.kora_payin_fee +
+        (payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")) +
+        payment.afm_fee
+    ).quantize(Decimal("0.01"))
+    net_source = (payment.amount - total_fees).quantize(Decimal("0.01"))
+    net_destination = (net_source * payment.fx_rate).quantize(Decimal("0.01"))
+    if net_source < 0:
+        raise HTTPException(status_code=422, detail="Total fees cannot exceed the source amount")
+
+    account = await get_or_create_virtual_account(user_id, db)
+    transaction = Transaction(
+        idempotency_key=f"sandbox-{uuid.uuid4().hex}",
+        user_id=user_id,
+        psp=PSPType.KORA,
+        amount=payment.amount,
+        currency=source_currency,
+        fee_amount=total_fees,
+        fee_currency=source_currency,
+        net_amount=net_source,
+        status=PaymentStatus.PENDING,
+        ledger_namespace="afm_payments",
+        virtual_account_id=account.id,
+        corridor=payment.corridor,
+        beneficiary_currency=beneficiary_currency,
+        total_fee_amount=total_fees,
+        txn_metadata={
+            **payment.metadata,
+            "execution_mode": "sandbox_simulation",
+            "funds_perimeter": "afm_virtual_ledger_only",
+            "balance_affecting": False,
+            "source_currency": source_currency,
+            "beneficiary_currency": beneficiary_currency,
+            "fx_rate": str(payment.fx_rate),
+            "net_destination_amount": str(net_destination),
+            "fee_breakdown": {
+                "kaybic": str(payment.kaybic_fee.quantize(Decimal("0.01"))),
+                "kora_payin": str(payment.kora_payin_fee.quantize(Decimal("0.01"))),
+                "kora_payout": str((payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")).quantize(Decimal("0.01"))),
+                "afm": str(payment.afm_fee.quantize(Decimal("0.01"))),
+                "total": str(total_fees),
+            },
+        },
+    )
+    db.add(transaction)
+    await db.flush()
+    journal = VirtualLedgerEntry(
+        virtual_account_id=account.id,
+        entry_type="payment_intent",
+        direction="credit",
+        amount=Decimal("0"),
+        currency=source_currency,
+        reference_type="transaction",
+        reference_id=str(transaction.id),
+        description="Sandbox payment intent — no funds movement",
+        entry_metadata={"balance_affecting": False, "execution_mode": "sandbox_simulation"},
+    )
+    db.add(journal)
+    transaction.txn_metadata = {**(transaction.txn_metadata or {}), "ledger_entry_count": 1, "ledger_reference_id": str(journal.id)}
+    await db.commit()
+    await db.refresh(transaction)
+    return serialize_transaction(transaction) | {
+        "net_destination_amount": str(net_destination),
+        "simulation_only": True,
+    }
+
+
+@app.get("/api/v1/transactions")
+async def list_dashboard_transactions(
+    status_: str | None = Query(default=None, alias="status_"),
+    psp: str | None = Query(default=None),
+    currency: str | None = Query(default=None, min_length=3, max_length=3),
+    search: str | None = Query(default=None, max_length=128),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=15, ge=1, le=100),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return only the authenticated merchant's transactions for dashboard access."""
+    filters = [Transaction.user_id == user_id, Transaction.ledger_namespace == "afm_payments"]
+    if status_:
+        try:
+            filters.append(Transaction.status == PaymentStatus(status_))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid transaction status")
+    if psp:
+        try:
+            filters.append(Transaction.psp == PSPType(psp))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid PSP")
+    if currency:
+        filters.append(Transaction.currency == currency.upper())
+    if search:
+        needle = f"%{search}%"
+        filters.append(or_(Transaction.id.cast(String).ilike(needle), Transaction.psp_transaction_id.ilike(needle)))
+    total = (await db.execute(select(func.count()).select_from(Transaction).where(*filters))).scalar_one()
+    rows = (await db.execute(
+        select(Transaction).where(*filters)
+        .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )).scalars().all()
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return {"items": [serialize_transaction(row) for row in rows], "pagination": {"page": page, "page_size": page_size, "total_count": total, "total_pages": total_pages}}
+
+
+@app.get("/api/v1/transactions/{transaction_id}")
+async def get_dashboard_transaction(
+    transaction_id: str,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        parsed_id = uuid.UUID(transaction_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid transaction id") from exc
+    row = (await db.execute(select(Transaction).where(
+        Transaction.id == parsed_id,
+        Transaction.user_id == user_id,
+        Transaction.ledger_namespace == "afm_payments",
+    ))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return serialize_transaction(row)
+
 
 @app.post("/api/v1/payments", status_code=status.HTTP_201_CREATED)
 async def create_payment(

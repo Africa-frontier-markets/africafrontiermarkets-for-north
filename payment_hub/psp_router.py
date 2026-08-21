@@ -22,8 +22,8 @@ class PSPRouter:
 
     # Currency → supported PSPs (including mobile money operators)
     CURRENCY_PSP_MAP = {
-        "XOF": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
-        "XAF": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
+        "XOF": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "XAF": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
         "NGN": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
         "KES": [PSPType.MTN_MOMO, PSPType.KORA, PSPType.FINCRA],
         "GHS": [PSPType.MTN_MOMO, PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
@@ -41,10 +41,10 @@ class PSPRouter:
     }
 
     REGION_PSP_PRIORITY = {
-        "west_africa": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.KORA, PSPType.FLUTTERWAVE, PSPType.FINCRA],
-        "east_africa": [PSPType.MTN_MOMO, PSPType.KORA, PSPType.FINCRA],
+        "west_africa": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "east_africa": [PSPType.KORA, PSPType.FINCRA, PSPType.MTN_MOMO],
         "south_africa": [PSPType.FINCRA, PSPType.STRIPE],
-        "central_africa": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.KORA],
+        "central_africa": [PSPType.KORA, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
         "international": [PSPType.STRIPE, PSPType.FINCRA],
     }
 
@@ -74,12 +74,8 @@ class PSPRouter:
         if not candidates:
             raise PaymentError(f"No PSP available for {currency} in {region} with method {method}")
 
-        # In development, skip credential check — simulation mode
-        settings = get_settings()
-        if settings.is_development:
-            return candidates[0]  # Return first candidate without credential check
-
-        # Production: Check API key availability
+        # Credential checks are enforced in every environment. The sandbox
+        # simulator has its own route and must not bypass PSP selection here.
         for psp in candidates:
             if cls._has_credentials(psp):
                 return psp

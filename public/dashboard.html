@@ -312,6 +312,11 @@
           </div>
           <div class="sim-breakdown" id="sim-breakdown"></div>
         </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--indigo-750);">
+          <span id="sim-segregation" style="font-size:11px;color:var(--teal);">✓ Simulation uniquement · aucun mouvement de fonds · périmètre AFM séparé</span>
+          <button class="btn-primary" style="width:auto;margin-top:0;padding:9px 14px;" id="sim-create">Créer l’intention sandbox</button>
+        </div>
+        <div class="error-msg" id="sim-error" style="margin-top:10px;margin-bottom:0;"></div>
       </div>
     </div>
   </div>
@@ -363,6 +368,11 @@
             <button class="btn-secondary" id="export-xlsx">Export Excel</button>
           </div>
         </div>
+      </div>
+
+      <div class="card" id="txn-detail-card" style="display:none;">
+        <div class="card-title">Détail de la transaction <button class="btn-secondary" id="txn-detail-close">Fermer</button></div>
+        <div id="txn-detail"></div>
       </div>
 
       <div class="card">
@@ -611,15 +621,16 @@
       } else {
         emptyEl.style.display = "none";
         tbody.innerHTML = data.items.map(t => `
-          <tr>
+          <tr data-txn-id="${t.transaction_id}" style="cursor:pointer">
             <td title="${t.transaction_id}">${shortId(t.transaction_id)}</td>
             <td><span class="txn-status txn-${t.status}">${t.status}</span></td>
             <td>${t.psp}</td>
             <td>${fmtAmount(t.amount)} ${t.currency}</td>
-            <td>${fmtAmount(t.fee_amount)} ${t.currency}</td>
+            <td>${fmtAmount(t.total_fee_amount || t.fee_amount)} ${t.currency}</td>
             <td>${fmtDate(t.created_at)}</td>
           </tr>
         `).join("");
+        tbody.querySelectorAll("tr[data-txn-id]").forEach(row => row.addEventListener("click", () => loadTransactionDetail(row.dataset.txnId)));
       }
 
       const p = data.pagination;
@@ -687,6 +698,38 @@
     } catch (err) { console.error("webhooks load failed", err); }
   }
 
+  async function loadTransactionDetail(transactionId) {
+    try {
+      const res = await apiFetch("/api/v1/transactions/" + encodeURIComponent(transactionId));
+      const t = await res.json();
+      const fee = t.fee_breakdown || {};
+      document.getElementById("txn-detail-card").style.display = "block";
+      document.getElementById("txn-detail").innerHTML = `
+        <div class="merchant-grid">
+          <div><div class="merchant-metric-label">Identifiant</div><div class="num">${t.transaction_id}</div></div>
+          <div><div class="merchant-metric-label">Statut</div><span class="txn-status txn-${t.status}">${t.status}</span></div>
+          <div><div class="merchant-metric-label">Corridor</div><div>${t.corridor || "—"}</div></div>
+          <div><div class="merchant-metric-label">Montant brut</div><div class="num">${fmtAmount(t.amount)} ${t.currency}</div></div>
+          <div><div class="merchant-metric-label">Coût total</div><div class="num">− ${fmtAmount(t.total_fee_amount)} ${t.fee_currency}</div></div>
+          <div><div class="merchant-metric-label">Net source</div><div class="num">${fmtAmount(t.net_amount)} ${t.currency}</div></div>
+        </div>
+        <div class="sim-breakdown" style="margin-top:16px;">
+          <div class="sim-line"><span>Kaybic</span><b>− ${fmtAmount(fee.kaybic || 0)} ${t.currency}</b></div>
+          <div class="sim-line"><span>Kora pay-in</span><b>− ${fmtAmount(fee.kora_payin || 0)} ${t.currency}</b></div>
+          <div class="sim-line"><span>Kora payout</span><b>− ${fmtAmount(fee.kora_payout || 0)} ${t.currency}</b></div>
+          <div class="sim-line"><span>AFM</span><b>− ${fmtAmount(fee.afm || 0)} ${t.currency}</b></div>
+        </div>
+        <div style="margin-top:16px;padding:12px;border:1px solid #4FA89055;border-radius:7px;background:#4FA89016;font-size:11px;line-height:1.7;">
+          <strong style="color:var(--teal)">Ségrégation vérifiée</strong><br>
+          Périmètre : <span class="num">${t.segregation.funds_perimeter}</span><br>
+          Compte virtuel : <span class="num">${t.virtual_account_id || "—"}</span><br>
+          Mode : <span class="num">${t.segregation.execution_mode}</span> · Impact solde : <span class="num">${t.segregation.balance_affecting ? "oui" : "non"}</span><br>
+          Référence ledger : <span class="num">${t.idempotency_key}</span>
+        </div>`;
+    } catch (err) { alert("Détail indisponible : " + err.message); }
+  }
+  document.getElementById("txn-detail-close").addEventListener("click", () => { document.getElementById("txn-detail-card").style.display = "none"; });
+
   // ---------- Activity feed ----------
   async function loadActivity() {
     try {
@@ -745,6 +788,40 @@
   simInputs.forEach(id => document.getElementById(id).addEventListener("input", renderSimulator));
   document.getElementById("sim-corridor").addEventListener("change", renderSimulator);
   renderSimulator();
+
+  document.getElementById("sim-create").addEventListener("click", async () => {
+    const errorEl = document.getElementById("sim-error");
+    const button = document.getElementById("sim-create");
+    errorEl.style.display = "none";
+    button.disabled = true;
+    button.textContent = "Création…";
+    try {
+      const amount = simNum("sim-amount");
+      const corridor = document.getElementById("sim-corridor").value;
+      const destination = corridor === "ci-ghana" ? "GHS" : "NGN";
+      const source = corridor === "cameroon-nigeria" ? "XAF" : "XOF";
+      const pct = id => amount * simNum(id) / 100;
+      const direction = document.getElementById("sim-direction").value;
+      const payload = {
+        amount, source_currency: source, beneficiary_currency: destination, corridor,
+        kaybic_fee: pct("sim-kaybic"), kora_payin_fee: pct("sim-kora-payin"),
+        kora_payout_fee: direction === "payout" ? pct("sim-kora-payout") : 0,
+        afm_fee: pct("sim-afm"), fx_rate: simNum("sim-fx"), direction,
+        metadata: { initiated_from: "frontierpay_dashboard", client_psp: "kaybic" }
+      };
+      const res = await apiFetch("/api/v1/payments/simulate", {method:"POST", body: JSON.stringify(payload), headers:{"X-Idempotency-Key":"sandbox-" + crypto.randomUUID()}});
+      const created = await res.json();
+      document.getElementById("sim-segregation").textContent = "✓ Intention " + shortId(created.transaction_id) + " journalisée · aucun mouvement de fonds · périmètre AFM séparé";
+      await loadTransactions(1);
+      await loadTransactionDetail(created.transaction_id);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = "block";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Créer l’intention sandbox";
+    }
+  });
 
   // ---------- Refresh orchestration ----------
   function refreshAll() {
