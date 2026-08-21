@@ -1084,6 +1084,41 @@ def serialize_transaction(transaction: Transaction) -> dict:
     }
 
 
+@app.post("/api/v1/public/frontierpay/simulate", status_code=status.HTTP_200_OK, dependencies=[Depends(rate_limit)])
+async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
+    """Public fee preview only: no authentication, database write or fund movement."""
+    source_currency = payment.source_currency.upper()
+    beneficiary_currency = payment.beneficiary_currency.upper()
+    payin_fee = payment.kora_payin_fee
+    payout_fee = payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")
+    afm_fee = payment.afm_fee
+    client_psp_fee = payment.kaybic_fee
+    total_fees = (payin_fee + payout_fee + afm_fee + client_psp_fee).quantize(Decimal("0.01"))
+    net_source = max(Decimal("0"), payment.amount - payin_fee - payout_fee - afm_fee - client_psp_fee).quantize(Decimal("0.01"))
+    net_destination = (net_source * payment.fx_rate).quantize(Decimal("0.01"))
+    return {
+        "simulation_only": True,
+        "execution_mode": "public_preview",
+        "amount": str(payment.amount.quantize(Decimal("0.01"))),
+        "source_currency": source_currency,
+        "beneficiary_currency": beneficiary_currency,
+        "corridor": payment.corridor,
+        "direction": payment.direction,
+        "fx_rate": str(payment.fx_rate),
+        "net_source_amount": str(net_source),
+        "net_destination_amount": str(net_destination),
+        "fee_breakdown": {
+            "collection": str(payin_fee.quantize(Decimal("0.01"))),
+            "payout": str(payout_fee.quantize(Decimal("0.01"))),
+            "platform": str(afm_fee.quantize(Decimal("0.01"))),
+            "client_psp": str(client_psp_fee.quantize(Decimal("0.01"))),
+            "total": str(total_fees),
+        },
+        "funds_movement": False,
+        "ledger_write": False,
+    }
+
+
 @app.post("/api/v1/payments/simulate", status_code=status.HTTP_201_CREATED)
 async def simulate_payment(
     payment: PaymentSimulationRequest,
