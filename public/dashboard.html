@@ -184,6 +184,26 @@
 
   .export-row{display:flex; gap:8px;}
 
+  /* PSP corridor simulator */
+  .psp-context{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;padding:10px 12px;border:1px solid #C68A3D55;border-radius:7px;background:#C68A3D0d;}
+  .psp-context strong{color:var(--ochre);font-size:12px;letter-spacing:.05em;text-transform:uppercase;}
+  .psp-context span{color:var(--sand-400);font-size:11.5px;}
+  .corridor-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .corridor-grid label,.sim-field label{display:block;color:var(--sand-400);font-size:11px;margin-bottom:5px;}
+  .corridor-grid select,.sim-field input{width:100%;background:var(--indigo-950);border:1px solid var(--indigo-750);color:var(--sand-100);padding:9px 10px;border-radius:6px;font-family:var(--mono);font-size:12px;}
+  .corridor-grid select:focus,.sim-field input:focus{outline:2px solid var(--ochre);outline-offset:1px;border-color:var(--ochre);}
+  .sim-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
+  .sim-field small{display:block;color:var(--sand-600);font-size:10px;margin-top:4px;}
+  .sim-result{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid var(--indigo-750);}
+  .sim-net{padding:14px;border-radius:8px;background:#4FA89016;border:1px solid #4FA89055;}
+  .sim-net-label{color:var(--teal);font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;}
+  .sim-net-value{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--sand-100);margin-top:4px;}
+  .sim-breakdown{display:grid;gap:5px;font-size:11px;}
+  .sim-line{display:flex;justify-content:space-between;gap:10px;color:var(--sand-400);}
+  .sim-line b{font-family:var(--mono);color:var(--sand-100);font-weight:500;}
+  .sim-line.total{padding-top:7px;margin-top:3px;border-top:1px solid var(--indigo-750);color:var(--sand-100);}
+  .sim-disclaimer{margin-top:12px;color:var(--sand-600);font-size:10.5px;line-height:1.45;}
+
   /* Activity feed */
   .feed{display:flex; flex-direction:column; gap:0; max-height:340px; overflow-y:auto;}
   .feed-item{
@@ -211,7 +231,11 @@
   @media (max-width: 880px){
     .content{flex-direction:column;}
     .col-side{max-width:none;}
+    .corridor-grid,.sim-result{grid-template-columns:1fr;}
+    .sim-fields{grid-template-columns:1fr 1fr;}
   }
+  @media (max-width: 520px){.sim-fields{grid-template-columns:1fr;}.psp-context{align-items:flex-start;flex-direction:column;}}
+
 </style>
 </head>
 <body>
@@ -253,6 +277,36 @@
   <div class="railmap-wrap">
     <div class="railmap-label">Santé des rails PSP — fenêtre glissante 60 min</div>
     <div class="railmap" id="railmap"></div>
+  </div>
+
+  <div class="content">
+    <div class="col-main">
+      <div class="card" id="psp-simulator">
+        <div class="card-title">FrontierPay PSP — simulateur Kaybic <span class="status-badge status-active">Client PSP</span></div>
+        <div class="psp-context"><div><strong>Kaybic</strong><br><span>PSP client AFM · sélection du corridor et instruction du flux</span></div><span>Les frais Kaybic restent retenus par Kaybic.</span></div>
+        <div class="corridor-grid">
+          <div><label for="sim-corridor">Corridor</label><select id="sim-corridor">
+            <option value="ci-ghana">Côte d’Ivoire → Ghana</option>
+            <option value="ci-nigeria">Côte d’Ivoire → Nigeria</option>
+            <option value="benin-nigeria">Bénin → Nigeria</option>
+            <option value="cameroon-nigeria">Cameroun → Nigeria</option>
+          </select></div>
+          <div><label for="sim-direction">Type de flux</label><select id="sim-direction"><option value="payout">Pay-in source → payout bénéficiaire</option><option value="payin">Pay-in seul / crédit AFM</option></select></div>
+        </div>
+        <div class="sim-fields">
+          <div class="sim-field"><label for="sim-amount">Montant brut source</label><input id="sim-amount" type="number" min="0" step="0.01" value="100000"><small>Montant saisi par Kaybic</small></div>
+          <div class="sim-field"><label for="sim-fx">Taux de change</label><input id="sim-fx" type="number" min="0" step="0.000001" value="1"><small>1 unité source = X unités destination</small></div>
+          <div class="sim-field"><label for="sim-kaybic">Commission Kaybic (%)</label><input id="sim-kaybic" type="number" min="0" step="0.01" value="0"><small>Retenue par Kaybic selon son accord PSP</small></div>
+          <div class="sim-field"><label for="sim-kora-payin">Pay-in Kora (%)</label><input id="sim-kora-payin" type="number" min="0" step="0.01" value="3"><small>Paramètre contractuel indicatif à confirmer</small></div>
+          <div class="sim-field"><label for="sim-kora-payout">Payout Kora (%)</label><input id="sim-kora-payout" type="number" min="0" step="0.01" value="2"><small>Paramètre contractuel indicatif à confirmer</small></div>
+          <div class="sim-field"><label for="sim-afm">Commission AFM (%)</label><input id="sim-afm" type="number" min="0" step="0.01" value="0"><small>Retenue via le règlement Kora</small></div>
+        </div>
+        <div class="sim-result">
+          <div class="sim-net"><div class="sim-net-label">Net estimé reçu par le bénéficiaire</div><div class="sim-net-value" id="sim-net">—</div><div class="sim-disclaimer">Le montant net est une simulation. Le montant final dépend du tarif approuvé, du FX exécuté, des frais du partenaire de destination et du statut de règlement.</div></div>
+          <div class="sim-breakdown" id="sim-breakdown"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="content">
@@ -645,6 +699,43 @@
       `).join("");
     } catch (err) { console.error("activity load failed", err); }
   }
+
+  // ---------- Kaybic PSP corridor simulator ----------
+  const simInputs = ["sim-amount", "sim-fx", "sim-kaybic", "sim-kora-payin", "sim-kora-payout", "sim-afm", "sim-direction"];
+  function simNum(id) {
+    const value = Number.parseFloat(document.getElementById(id).value);
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+  function renderSimulator() {
+    const amount = simNum("sim-amount");
+    const fx = simNum("sim-fx");
+    const kaybicRate = simNum("sim-kaybic") / 100;
+    const koraPayinRate = simNum("sim-kora-payin") / 100;
+    const koraPayoutRate = simNum("sim-kora-payout") / 100;
+    const afmRate = simNum("sim-afm") / 100;
+    const direction = document.getElementById("sim-direction").value;
+    const kaybicFee = amount * kaybicRate;
+    const koraPayinFee = amount * koraPayinRate;
+    const baseAfterPayin = Math.max(0, amount - koraPayinFee);
+    const koraPayoutFee = direction === "payout" ? baseAfterPayin * koraPayoutRate : 0;
+    const afmFee = baseAfterPayin * afmRate;
+    const netSource = Math.max(0, baseAfterPayin - koraPayoutFee - afmFee - kaybicFee);
+    const netDestination = netSource * fx;
+    const currencyLabel = document.getElementById("sim-corridor").value === "ci-ghana" ? "GHS" : (document.getElementById("sim-corridor").value === "ci-nigeria" || document.getElementById("sim-corridor").value === "benin-nigeria" || document.getElementById("sim-corridor").value === "cameroon-nigeria" ? "NGN" : "unités destination");
+    document.getElementById("sim-net").textContent = fmtAmount(netDestination) + " " + currencyLabel;
+    document.getElementById("sim-breakdown").innerHTML = [
+      `<div class="sim-line"><span>Montant brut</span><b>${fmtAmount(amount)}</b></div>`,
+      `<div class="sim-line"><span>Commission Kaybic — retenue Kaybic</span><b>− ${fmtAmount(kaybicFee)}</b></div>`,
+      `<div class="sim-line"><span>Pay-in Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayinFee)}</b></div>`,
+      `<div class="sim-line"><span>Pay-out Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayoutFee)}</b></div>`,
+      `<div class="sim-line"><span>Commission AFM — via règlement Kora</span><b>− ${fmtAmount(afmFee)}</b></div>`,
+      `<div class="sim-line"><span>Taux FX appliqué</span><b>× ${fx.toFixed(6)}</b></div>`,
+      `<div class="sim-line total"><span>Net source avant conversion</span><b>${fmtAmount(netSource)}</b></div>`
+    ].join("");
+  }
+  simInputs.forEach(id => document.getElementById(id).addEventListener("input", renderSimulator));
+  document.getElementById("sim-corridor").addEventListener("change", renderSimulator);
+  renderSimulator();
 
   // ---------- Refresh orchestration ----------
   function refreshAll() {
