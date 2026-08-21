@@ -198,6 +198,10 @@
   .sim-net{padding:14px;border-radius:8px;background:#4FA89016;border:1px solid #4FA89055;}
   .sim-net-label{color:var(--teal);font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;}
   .sim-net-value{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--sand-100);margin-top:4px;}
+  .sim-total-cost{margin-bottom:12px;padding:12px;border-radius:8px;background:#C68A3D16;border:1px solid #C68A3D66;}
+  .sim-total-cost .sim-net-label{color:var(--ochre);}
+  .sim-total-cost .sim-net-value{font-size:22px;color:var(--ochre);}
+  .sim-total-cost small{display:block;color:var(--sand-600);font-size:10.5px;margin-top:4px;}
   .sim-breakdown{display:grid;gap:5px;font-size:11px;}
   .sim-line{display:flex;justify-content:space-between;gap:10px;color:var(--sand-400);}
   .sim-line b{font-family:var(--mono);color:var(--sand-100);font-weight:500;}
@@ -302,7 +306,10 @@
           <div class="sim-field"><label for="sim-afm">Commission AFM (%)</label><input id="sim-afm" type="number" min="0" step="0.01" value="0"><small>Retenue via le règlement Kora</small></div>
         </div>
         <div class="sim-result">
-          <div class="sim-net"><div class="sim-net-label">Net estimé reçu par le bénéficiaire</div><div class="sim-net-value" id="sim-net">—</div><div class="sim-disclaimer">Le montant net est une simulation. Le montant final dépend du tarif approuvé, du FX exécuté, des frais du partenaire de destination et du statut de règlement.</div></div>
+          <div>
+            <div class="sim-total-cost"><div class="sim-net-label">Coût total déduit du montant envoyé</div><div class="sim-net-value" id="sim-total-fees">—</div><small>Ce montant agrège les retenues Kaybic, Kora et AFM avant paiement du bénéficiaire.</small></div>
+            <div class="sim-net"><div class="sim-net-label">Montant net reçu par le bénéficiaire</div><div class="sim-net-value" id="sim-net">—</div><div class="sim-disclaimer">Le montant final dépend du tarif approuvé, du FX exécuté, des frais du partenaire de destination et du statut de règlement.</div></div>
+          </div>
           <div class="sim-breakdown" id="sim-breakdown"></div>
         </div>
       </div>
@@ -722,9 +729,11 @@
     const netSource = Math.max(0, baseAfterPayin - koraPayoutFee - afmFee - kaybicFee);
     const netDestination = netSource * fx;
     const currencyLabel = document.getElementById("sim-corridor").value === "ci-ghana" ? "GHS" : (document.getElementById("sim-corridor").value === "ci-nigeria" || document.getElementById("sim-corridor").value === "benin-nigeria" || document.getElementById("sim-corridor").value === "cameroon-nigeria" ? "NGN" : "unités destination");
+    const totalFees = kaybicFee + koraPayinFee + koraPayoutFee + afmFee;
+    document.getElementById("sim-total-fees").textContent = "− " + fmtAmount(totalFees);
     document.getElementById("sim-net").textContent = fmtAmount(netDestination) + " " + currencyLabel;
     document.getElementById("sim-breakdown").innerHTML = [
-      `<div class="sim-line"><span>Montant brut</span><b>${fmtAmount(amount)}</b></div>`,
+      `<div class="sim-line total"><span>Coût total déduit</span><b>− ${fmtAmount(totalFees)}</b></div>`,
       `<div class="sim-line"><span>Commission Kaybic — retenue Kaybic</span><b>− ${fmtAmount(kaybicFee)}</b></div>`,
       `<div class="sim-line"><span>Pay-in Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayinFee)}</b></div>`,
       `<div class="sim-line"><span>Pay-out Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayoutFee)}</b></div>`,
