@@ -6,18 +6,19 @@ from payment_hub.models import PSPType
 from config.exceptions import CurrencyNotSupportedError, PaymentError
 
 
-def test_psp_select_by_currency():
+@patch.object(PSPRouter, "_has_credentials", return_value=True)
+def test_psp_select_by_currency(_mock_has_credentials):
     """Selection PSP par devise avec routing regional."""
     # XOF -> Kora (west_africa priority)
     psp = psp_router.select_psp("XOF", region="west_africa")
     assert psp in [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE]
 
     # ZAR -> Fincra ou Stripe (south_africa)
-    psp = psp_router.select_psp("ZAR", region="south_africa")
+    psp = psp_router.select_psp("ZAR", method="card", region="south_africa")
     assert psp in [PSPType.FINCRA, PSPType.STRIPE]
 
     # USD -> Stripe ou Fincra (international)
-    psp = psp_router.select_psp("USD", region="international")
+    psp = psp_router.select_psp("USD", method="card", region="international")
     assert psp in [PSPType.STRIPE, PSPType.FINCRA]
 
 
@@ -34,7 +35,8 @@ def test_psp_no_credentials_fallback():
             psp_router.select_psp("XOF")
 
 
-def test_psp_currency_case_insensitive():
+@patch.object(PSPRouter, "_has_credentials", return_value=True)
+def test_psp_currency_case_insensitive(_mock_has_credentials):
     """Devise insensible a la casse."""
     psp1 = psp_router.select_psp("xof")
     psp2 = psp_router.select_psp("XOF")

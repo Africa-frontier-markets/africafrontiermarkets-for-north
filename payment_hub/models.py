@@ -47,6 +47,12 @@ class Transaction(Base):
     net_amount = Column(Numeric(19, 8), default=Decimal("0"))
     status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING)
     txn_metadata = Column(JSON, default=dict)  # WAS "metadata" — reserved by SQLAlchemy Base.metadata
+    # Segregation and audit fields: these identify the AFM ledger perimeter without exposing partner secrets.
+    ledger_namespace = Column(String(64), nullable=False, default="afm_payments")
+    virtual_account_id = Column(UUID(as_uuid=True), ForeignKey("virtual_accounts.id"), nullable=True, index=True)
+    corridor = Column(String(64))
+    beneficiary_currency = Column(String(3))
+    total_fee_amount = Column(Numeric(19, 8), default=Decimal("0"))
     error_message = Column(Text)
     webhook_received_at = Column(DateTime(timezone=True))
     settled_at = Column(DateTime(timezone=True))

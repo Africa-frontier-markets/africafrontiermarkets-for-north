@@ -103,6 +103,11 @@ class PaymentService:
         self._pending_locks: set[str] = set()
         self._http_client: Optional[httpx.AsyncClient] = None
 
+    def _generate_lock_id(self, user_id: str, amount: str, currency: str, timestamp: str) -> str:
+        """Stable SHA-256 lock identifier retained for compatibility with V45 tests."""
+        key = f"{user_id}:{amount}:{currency}:{timestamp}"
+        return hashlib.sha256(key.encode()).hexdigest()
+
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(timeout=30.0)

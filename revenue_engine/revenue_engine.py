@@ -107,6 +107,14 @@ class AFMRevenueEngine:
         self.min_fee = settings.afm_min_fee_usd
         self.max_fee = settings.afm_max_fee_usd
 
+    def calculate_split(self, gross_amount: Decimal) -> RevenueSplit:
+        """Compatibility API for the legacy 35/50/15 revenue split contract.
+
+        Payment processing uses ``calculate_fee``; this method keeps the older
+        split API available to callers and tests without changing AFM fee logic.
+        """
+        return RevenueEngine().calculate_split(gross_amount)
+
     def calculate_fee(self, amount: Decimal, currency: str = "USD", psp: str = "kora") -> FeeBreakdown:
         """
         Calculate AFM fee for a transaction.

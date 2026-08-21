@@ -24,7 +24,7 @@ class BrokerRouter:
             raise BrokerUnavailableError(f"No broker available for market {market_code}")
 
         if preferred_region:
-            region_candidates = [b for b in candidates if preferred_region in b.supported_markets]
+            region_candidates = [b for b in candidates if self._matches_region(b, preferred_region)]
             if region_candidates:
                 candidates = region_candidates
 
@@ -45,6 +45,23 @@ class BrokerRouter:
                 return broker
 
         return candidates[-1]
+
+    def _matches_region(self, broker: Broker, preferred_region: str) -> bool:
+        """Match a preferred region without confusing it with a market code.
+
+        The current legacy Broker model has no dedicated region column. Until that
+        additive schema change is introduced, use an optional `region` attribute
+        when present and fall back to an explicit region token in the broker name
+        or endpoint (e.g. ``Broker CI``). This keeps routing deterministic and
+        avoids treating ``CI`` as a supported market.
+        """
+        wanted = preferred_region.strip().upper()
+        declared = getattr(broker, "region", None)
+        if declared and str(declared).upper() == wanted:
+            return True
+        name = str(getattr(broker, "name", "")).upper()
+        endpoint = str(getattr(broker, "api_endpoint", "")).upper()
+        return wanted in name.split() or f"-{wanted.lower()}" in endpoint.lower() or f"{wanted.lower()}." in endpoint.lower()
 
     def _supports_market(self, broker: Broker, market_code: str) -> bool:
         try:
