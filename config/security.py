@@ -14,22 +14,29 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
+import bcrypt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 
 from config.config import get_settings
 from config.exceptions import AuthenticationError
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a bcrypt hash using the maintained bcrypt library directly.
+
+    Existing Passlib-generated bcrypt hashes remain compatible because the
+    bcrypt wire format is unchanged.
+    """
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Create a bcrypt password hash without the deprecated crypt backend."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
