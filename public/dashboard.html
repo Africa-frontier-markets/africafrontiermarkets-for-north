@@ -307,7 +307,7 @@
         </div>
         <div class="sim-result">
           <div>
-            <div class="sim-total-cost"><div class="sim-net-label">Coût total déduit du montant envoyé</div><div class="sim-net-value" id="sim-total-fees">—</div><small>Ce montant agrège les retenues Kaybic, Kora et AFM avant paiement du bénéficiaire.</small></div>
+            <div class="sim-total-cost"><div class="sim-net-label">Platform fees — coût total déduit</div><div class="sim-net-value" id="sim-total-fees">—</div><small>Ce montant consolide toutes les retenues avant paiement du bénéficiaire ; la ventilation détaillée reste visible ci-dessous.</small></div>
             <div class="sim-net"><div class="sim-net-label">Montant net reçu par le bénéficiaire</div><div class="sim-net-value" id="sim-net">—</div><div class="sim-disclaimer">Le montant final dépend du tarif approuvé, du FX exécuté, des frais du partenaire de destination et du statut de règlement.</div></div>
           </div>
           <div class="sim-breakdown" id="sim-breakdown"></div>
@@ -776,7 +776,7 @@
     document.getElementById("sim-total-fees").textContent = "− " + fmtAmount(totalFees);
     document.getElementById("sim-net").textContent = fmtAmount(netDestination) + " " + currencyLabel;
     document.getElementById("sim-breakdown").innerHTML = [
-      `<div class="sim-line total"><span>Coût total déduit</span><b>− ${fmtAmount(totalFees)}</b></div>`,
+      `<div class="sim-line total"><span>Platform fees — total consolidé</span><b>− ${fmtAmount(totalFees)}</b></div>`,
       `<div class="sim-line"><span>Commission Kaybic — retenue Kaybic</span><b>− ${fmtAmount(kaybicFee)}</b></div>`,
       `<div class="sim-line"><span>Pay-in Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayinFee)}</b></div>`,
       `<div class="sim-line"><span>Pay-out Kora — retenu via Kora</span><b>− ${fmtAmount(koraPayoutFee)}</b></div>`,
