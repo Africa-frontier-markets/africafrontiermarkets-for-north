@@ -3,7 +3,7 @@
 AFM Revenue Engine — B2B Transaction Fee Model
 
 NOT COSY. This is pure fintech:
-- Commission per transaction: 25 bps (0.25%)
+- Commission per transaction: 200 bps (2.00%)
 - Min fee: $0.50
 - Max fee: $50.00
 - No ads, no creator split, no platform split.
@@ -87,7 +87,7 @@ class AFMRevenueEngine:
     """
 
     # AFM commission
-    AFM_COMMISSION_BPS = 25  # 0.25%
+    AFM_COMMISSION_BPS = 200  # 2.00%
     AFM_MIN_FEE_USD = Decimal("0.50")
     AFM_MAX_FEE_USD = Decimal("50.00")
 

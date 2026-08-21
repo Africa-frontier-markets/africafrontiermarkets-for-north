@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
 
     # AFM B2B Revenue Model: commission per transaction (bps)
-    afm_commission_bps: int = Field(default=25, ge=0, le=500)  # 0.25% per txn
+    afm_commission_bps: int = Field(default=200, ge=0, le=500)  # 2.00% per txn
     afm_min_fee_usd: Decimal = Field(default=Decimal("0.50"))
     afm_max_fee_usd: Decimal = Field(default=Decimal("50.00"))
 
