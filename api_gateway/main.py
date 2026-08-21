@@ -1040,6 +1040,23 @@ class PaymentSimulationRequest(BaseModel):
     direction: str = Field(default="payout", pattern="^(payout|payin)$")
     metadata: dict = Field(default_factory=dict)
 
+class PublicPaymentSimulationResponse(BaseModel):
+    """Public preview contract: consolidated fees only, with no financial side effect."""
+    simulation_only: bool = True
+    execution_mode: str
+    amount: str
+    source_currency: str
+    beneficiary_currency: str
+    corridor: str
+    direction: str
+    fx_rate: str
+    net_source_amount: str
+    net_destination_amount: str
+    platform_fees: str = Field(description="Total consolidated fees shown to the user.")
+    funds_movement: bool = False
+    ledger_write: bool = False
+
+
 class PaymentResponse(BaseModel):
     transaction_id: str
     status: str
@@ -1084,7 +1101,7 @@ def serialize_transaction(transaction: Transaction) -> dict:
     }
 
 
-@app.post("/api/v1/public/frontierpay/simulate", status_code=status.HTTP_200_OK, dependencies=[Depends(rate_limit)])
+@app.post("/api/v1/public/frontierpay/simulate", status_code=status.HTTP_200_OK, response_model=PublicPaymentSimulationResponse, dependencies=[Depends(rate_limit)])
 async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
     """Public fee preview only: no authentication, database write or fund movement."""
     source_currency = payment.source_currency.upper()
