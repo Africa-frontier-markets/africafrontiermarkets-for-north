@@ -15,7 +15,7 @@ async def test_public_frontierpay_simulation_is_non_financial():
         kaybic_fee=Decimal("1000"),
         kora_payin_fee=Decimal("3000"),
         kora_payout_fee=Decimal("2000"),
-        afm_fee=Decimal("250"),
+        afm_fee=Decimal("2000"),
         fx_rate=Decimal("1.5"),
         direction="payout",
     )
@@ -26,6 +26,7 @@ async def test_public_frontierpay_simulation_is_non_financial():
     assert result["execution_mode"] == "public_preview"
     assert result["funds_movement"] is False
     assert result["ledger_write"] is False
-    assert result["fee_breakdown"]["total"] == "6250.00"
-    assert result["net_source_amount"] == "93750.00"
-    assert result["net_destination_amount"] == "140625.00"
+    assert result["fee_breakdown"]["platform"] == "2000.00"
+    assert result["fee_breakdown"]["total"] == "8000.00"
+    assert result["net_source_amount"] == "92000.00"
+    assert result["net_destination_amount"] == "138000.00"

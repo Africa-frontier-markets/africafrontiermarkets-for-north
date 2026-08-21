@@ -78,7 +78,7 @@ envVarGroups:
 
       # ── AFM revenue model (defaults match revenue_engine.py) ────────
       - key: AFM_COMMISSION_BPS
-        value: "25"
+        value: "200"
       - key: AFM_MIN_FEE_USD
         value: "0.50"
       - key: AFM_MAX_FEE_USD
