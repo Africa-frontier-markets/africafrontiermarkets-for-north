@@ -42,7 +42,7 @@ from config.telemetry import app_info, http_requests_total, http_request_duratio
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
-from payment_hub.kora_client import KoraClientError, get_kora_balance
+from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balance
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
@@ -1044,9 +1044,44 @@ class PaymentSimulationRequest(BaseModel):
     kora_payin_fee: Decimal = Field(default=Decimal("0"), ge=0)
     kora_payout_fee: Decimal = Field(default=Decimal("0"), ge=0)
     afm_fee: Decimal = Field(default=Decimal("0"), ge=0)
-    fx_rate: Decimal = Field(default=Decimal("1"), gt=0)
+    fx_rate: Decimal = Field(default=Decimal("1"), gt=0, description="Used by authenticated sandbox intents; public simulation ignores caller-supplied rates.")
     direction: str = Field(default="payout", pattern="^(payout|payin)$")
     metadata: dict = Field(default_factory=dict)
+
+KORA_DIRECT_FX_PAIRS = {
+    ("XAF", "USD"), ("USD", "XAF"), ("XOF", "USD"), ("USD", "XOF"),
+    ("USD", "NGN"), ("NGN", "USD"), ("USD", "GHS"), ("GHS", "USD"),
+    ("USD", "ZAR"), ("ZAR", "USD"), ("USD", "KES"), ("KES", "USD"),
+}
+
+
+async def get_frontierpay_kora_quote(*, amount: Decimal, source_currency: str, beneficiary_currency: str, reference: str) -> dict:
+    """Fetch a live Kora quote; chain through USD where Kora has no direct pair."""
+    source_currency = source_currency.upper()
+    beneficiary_currency = beneficiary_currency.upper()
+    if source_currency == beneficiary_currency:
+        return {"rate": Decimal("1"), "expiry_date": None, "expiry_in_seconds": None, "legs": []}
+    client = KoraClient(get_settings())
+    if (source_currency, beneficiary_currency) in KORA_DIRECT_FX_PAIRS:
+        quote = await client.get_exchange_rate(
+            amount=amount, from_currency=source_currency, to_currency=beneficiary_currency, reference=reference
+        )
+        return {"rate": quote["rate"], "expiry_date": quote["expiry_date"], "expiry_in_seconds": quote["expiry_in_seconds"], "legs": [quote]}
+    if (source_currency, "USD") not in KORA_DIRECT_FX_PAIRS or ("USD", beneficiary_currency) not in KORA_DIRECT_FX_PAIRS:
+        raise KoraClientError(f"Kora does not support the corridor {source_currency}/{beneficiary_currency}")
+    first = await client.get_exchange_rate(
+        amount=amount, from_currency=source_currency, to_currency="USD", reference=f"{reference}-1"
+    )
+    second = await client.get_exchange_rate(
+        amount=first["to_amount"], from_currency="USD", to_currency=beneficiary_currency, reference=f"{reference}-2"
+    )
+    return {
+        "rate": (first["rate"] * second["rate"]).quantize(Decimal("0.00000001")),
+        "expiry_date": second["expiry_date"] or first["expiry_date"],
+        "expiry_in_seconds": min(x for x in (first["expiry_in_seconds"], second["expiry_in_seconds"]) if isinstance(x, int)) if isinstance(first["expiry_in_seconds"], int) and isinstance(second["expiry_in_seconds"], int) else None,
+        "legs": [first, second],
+    }
+
 
 class PublicPaymentSimulationResponse(BaseModel):
     """Public preview contract: consolidated fees only, with no financial side effect."""
@@ -1058,6 +1093,8 @@ class PublicPaymentSimulationResponse(BaseModel):
     corridor: str
     direction: str
     fx_rate: str
+    rate_source: str = Field(default="live_corridor_quote", description="Server-side live corridor quote.")
+    rate_expiry: str | None = None
     net_source_amount: str
     net_destination_amount: str
     platform_fees: str = Field(description="Total consolidated fees shown to the user.")
@@ -1119,8 +1156,20 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
     afm_fee = payment.afm_fee
     client_psp_fee = payment.kaybic_fee
     total_fees = (payin_fee + payout_fee + afm_fee + client_psp_fee).quantize(Decimal("0.01"))
-    net_source = max(Decimal("0"), payment.amount - payin_fee - payout_fee - afm_fee - client_psp_fee).quantize(Decimal("0.01"))
-    net_destination = (net_source * payment.fx_rate).quantize(Decimal("0.01"))
+    net_source = max(Decimal("0"), payment.amount - total_fees).quantize(Decimal("0.01"))
+    if net_source <= 0:
+        raise HTTPException(status_code=422, detail="Total fees cannot exceed the source amount")
+    try:
+        quote = await get_frontierpay_kora_quote(
+            amount=net_source,
+            source_currency=source_currency,
+            beneficiary_currency=beneficiary_currency,
+            reference=f"frontierpay-public-{uuid.uuid4().hex}",
+        )
+    except KoraClientError as exc:
+        raise HTTPException(status_code=503, detail="Live corridor rate is temporarily unavailable") from exc
+    fx_rate = quote["rate"]
+    net_destination = (net_source * fx_rate).quantize(Decimal("0.01"))
     return {
         "simulation_only": True,
         "execution_mode": "public_preview",
@@ -1129,7 +1178,9 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
         "beneficiary_currency": beneficiary_currency,
         "corridor": payment.corridor,
         "direction": payment.direction,
-        "fx_rate": str(payment.fx_rate),
+        "fx_rate": str(fx_rate),
+        "rate_source": "live_corridor_quote",
+        "rate_expiry": quote.get("expiry_date"),
         "net_source_amount": str(net_source),
         "net_destination_amount": str(net_destination),
         "platform_fees": str(total_fees),
