@@ -219,6 +219,14 @@ async def root():
     }
 
 
+@app.get("/contact/loic-mpanjo")
+async def loic_mpanjo_contact_page():
+    contact_path = PUBLIC_DIR / "loic-mpanjo.html"
+    if contact_path.exists():
+        return FileResponse(contact_path)
+    raise HTTPException(status_code=404, detail="Contact page not found")
+
+
 @app.get("/sandbox")
 async def sandbox_page():
     sandbox_path = PUBLIC_DIR / "sandbox.html"
