@@ -54,7 +54,13 @@ def status_of(data: dict) -> str:
 async def poll_charge(client: KoraClient, reference: str, attempts: int, delay: float) -> dict:
     latest: dict = {}
     for attempt in range(1, attempts + 1):
-        latest = await client.verify_charge(reference=reference)
+        try:
+            latest = await client.verify_charge(reference=reference)
+        except KoraClientError as exc:
+            print(json.dumps({"charge_poll": attempt, "status": "unavailable", "retryable_error": str(exc)}, default=str))
+            if attempt < attempts:
+                await asyncio.sleep(delay)
+            continue
         status = status_of(latest)
         print(json.dumps({"charge_poll": attempt, "status": status}, default=str))
         if status in SUCCESS_STATUSES or status in {"failed", "cancelled", "canceled", "expired"}:
@@ -67,7 +73,13 @@ async def poll_charge(client: KoraClient, reference: str, attempts: int, delay: 
 async def poll_refund(client: KoraClient, reference: str, attempts: int, delay: float) -> dict:
     latest: dict = {}
     for attempt in range(1, attempts + 1):
-        latest = await client.get_refund(refund_reference=reference)
+        try:
+            latest = await client.get_refund(refund_reference=reference)
+        except KoraClientError as exc:
+            print(json.dumps({"refund_poll": attempt, "status": "unavailable", "retryable_error": str(exc)}, default=str))
+            if attempt < attempts:
+                await asyncio.sleep(delay)
+            continue
         status = status_of(latest)
         print(json.dumps({"refund_poll": attempt, "status": status}, default=str))
         if status in SUCCESS_STATUSES or status in {"failed", "cancelled", "canceled", "expired"}:

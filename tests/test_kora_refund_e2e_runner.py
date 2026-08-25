@@ -45,3 +45,24 @@ def test_status_of_supports_nested_api_status_fields():
     assert status_of({"payment_status": "completed"}) == "completed"
     assert status_of({"status": "FAILED"}) == "failed"
     assert status_of({}) == ""
+
+
+class FlakyRefundClient(FakeRefundClient):
+    def __init__(self):
+        super().__init__()
+        self.failed_once = False
+
+    async def verify_charge(self, *, reference):
+        from payment_hub.kora_client import KoraClientError
+        if not self.failed_once:
+            self.failed_once = True
+            raise KoraClientError("temporary upstream error")
+        return await super().verify_charge(reference=reference)
+
+
+@pytest.mark.asyncio
+async def test_poll_charge_retries_transient_kora_error():
+    client = FlakyRefundClient()
+    result = await poll_charge(client, "payin-flaky", attempts=5, delay=0)
+    assert status_of(result) == "success"
+    assert client.charge_calls == ["payin-flaky", "payin-flaky"]
