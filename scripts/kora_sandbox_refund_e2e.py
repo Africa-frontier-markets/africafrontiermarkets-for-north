@@ -87,6 +87,7 @@ async def run() -> int:
     webhook_url = os.getenv("AFM_WEBHOOK_URL", "https://africafrontiermarkets.com/webhooks/kora")
     poll_attempts = int(os.getenv("KORA_REFUND_POLL_ATTEMPTS", "6"))
     poll_delay = float(os.getenv("KORA_REFUND_POLL_DELAY_SECONDS", "5"))
+    started_at = time.monotonic()
     base = f"afm-refund-sbx-{os.urandom(8).hex()}"
     payin_reference = f"{base}-payin"
     refund_reference = f"{base}-refund"
@@ -128,11 +129,12 @@ async def run() -> int:
         reason="AFM sandbox end-to-end refund validation",
         webhook_url=webhook_url,
     )
-    print(json.dumps({"refund_status": status_of(refund), "refund_reference": str(refund.get("refund_reference") or refund.get("reference") or refund_reference)}, default=str))
+    refund_reference_from_api = str(refund.get("refund_reference") or refund.get("reference") or refund_reference)
+    print(json.dumps({"refund_status": status_of(refund), "refund_reference": refund_reference_from_api}, default=str))
 
-    final_refund = await poll_refund(client, refund_reference, poll_attempts, poll_delay)
+    final_refund = await poll_refund(client, refund_reference_from_api, poll_attempts, poll_delay)
     final_refund_status = status_of(final_refund)
-    print(json.dumps({"final_payin_status": final_payin_status, "final_refund_status": final_refund_status, "webhook_url": webhook_url, "elapsed_seconds": round(time.monotonic(), 3)}, default=str))
+    print(json.dumps({"final_payin_status": final_payin_status, "final_refund_status": final_refund_status, "webhook_url": webhook_url, "elapsed_seconds": round(time.monotonic() - started_at, 3)}, default=str))
     return 0 if final_refund_status in SUCCESS_STATUSES else 2
 
 
