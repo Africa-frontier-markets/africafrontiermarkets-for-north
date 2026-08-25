@@ -51,20 +51,52 @@ def status_of(data: dict) -> str:
     return str(data.get("status") or data.get("payment_status") or "").lower()
 
 
-async def poll_charge(client: KoraClient, reference: str, attempts: int, delay: float) -> dict:
+async def poll_charge(
+    client: KoraClient,
+    references: str | tuple[str, ...],
+    attempts: int,
+    delay: float,
+) -> dict:
+    """Poll a charge, falling back to the merchant payment reference on 404.
+
+    Kora documents transaction_reference for verification, but some sandbox
+    responses have only been discoverable through payment_reference. A fallback
+    is safe only for a not-found response; transport and authorization errors
+    remain retryable without changing the reference.
+    """
+    if isinstance(references, str):
+        references = (references,)
+    references = tuple(dict.fromkeys(ref for ref in references if ref))
     latest: dict = {}
     for attempt in range(1, attempts + 1):
-        try:
-            latest = await client.verify_charge(reference=reference)
-        except KoraClientError as exc:
-            print(json.dumps({"charge_poll": attempt, "status": "unavailable", "retryable_error": str(exc)}, default=str))
-            if attempt < attempts:
-                await asyncio.sleep(delay)
-            continue
-        status = status_of(latest)
-        print(json.dumps({"charge_poll": attempt, "status": status}, default=str))
-        if status in SUCCESS_STATUSES or status in {"failed", "cancelled", "canceled", "expired"}:
-            return latest
+        for reference_index, reference in enumerate(references):
+            try:
+                latest = await client.verify_charge(reference=reference)
+            except KoraClientError as exc:
+                error = str(exc)
+                if "(404)" in error and reference_index + 1 < len(references):
+                    print(json.dumps({
+                        "charge_poll": attempt,
+                        "status": "reference_not_found",
+                        "reference_kind": "transaction_reference" if reference_index == 0 else "payment_reference",
+                    }, default=str))
+                    continue
+                print(json.dumps({
+                    "charge_poll": attempt,
+                    "status": "unavailable",
+                    "retryable_error": error,
+                    "reference_kind": "transaction_reference" if reference_index == 0 else "payment_reference",
+                }, default=str))
+                break
+            status = status_of(latest)
+            print(json.dumps({
+                "charge_poll": attempt,
+                "status": status,
+                "reference_kind": "transaction_reference" if reference_index == 0 else "payment_reference",
+            }, default=str))
+            if status in SUCCESS_STATUSES or status in {"failed", "cancelled", "canceled", "expired"}:
+                return latest
+            break
         if attempt < attempts:
             await asyncio.sleep(delay)
     return latest
@@ -121,7 +153,10 @@ async def run() -> int:
         notification_url=webhook_url,
         metadata={"afm_test": "refund_e2e", "execution_mode": "sandbox", "corridor": corridor},
     )
-    payin_reference_from_api = str(payin.get("transaction_reference") or payin.get("payment_reference") or payin_reference)
+    transaction_reference = str(payin.get("transaction_reference") or "")
+    payment_reference = str(payin.get("payment_reference") or "")
+    payin_reference_from_api = transaction_reference or payment_reference or payin_reference
+    payin_references = tuple(ref for ref in (transaction_reference, payment_reference, payin_reference) if ref)
     auth_model = str(payin.get("auth_model") or "").upper()
     print(json.dumps({"payin_status": status_of(payin), "payin_reference": payin_reference_from_api, "auth_model": auth_model}, default=str))
     if auth_model == "STK_PROMPT":
@@ -138,14 +173,14 @@ async def run() -> int:
         payin = await client.authorize_mobile_money(reference=payin_reference_from_api, token=token)
         print(json.dumps({"authorization_status": status_of(payin)}, default=str))
 
-    final_payin = await poll_charge(client, payin_reference_from_api, poll_attempts, poll_delay)
+    final_payin = await poll_charge(client, payin_references, poll_attempts, poll_delay)
     final_payin_status = status_of(final_payin)
     if final_payin_status not in SUCCESS_STATUSES:
         print(json.dumps({"refund_skipped": True, "reason": "pay-in did not reach a refundable success status", "payin_status": final_payin_status}, default=str))
         return 2
 
     refund = await client.initiate_refund(
-        payment_reference=payin_reference_from_api,
+        payment_reference=payment_reference or payin_reference_from_api,
         refund_reference=refund_reference,
         amount=amount,
         reason="AFM sandbox end-to-end refund validation",
