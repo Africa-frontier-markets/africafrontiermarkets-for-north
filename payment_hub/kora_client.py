@@ -220,6 +220,49 @@ class KoraClient:
             json={"reference": reference, "destination": destination},
         )
 
+    async def initiate_refund(
+        self,
+        *,
+        payment_reference: str,
+        refund_reference: str,
+        amount: Decimal | None = None,
+        reason: str | None = None,
+        webhook_url: str | None = None,
+        completion_status: str | None = None,
+        status_reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Initiate a full or partial refund for a successful Kora pay-in.
+
+        ``completion_status`` and ``status_reason`` are intentionally limited to
+        sandbox callers by the API route; they are never sent by production
+        business logic.
+        """
+        if not payment_reference or len(refund_reference) < 5 or len(refund_reference) > 50:
+            raise KoraClientError("Payment and refund references are required")
+        payload: dict[str, Any] = {
+            "payment_reference": payment_reference,
+            "reference": refund_reference,
+        }
+        if amount is not None:
+            if amount <= 0:
+                raise KoraClientError("Refund amount must be positive")
+            payload["amount"] = float(amount)
+        for key, value in (
+            ("reason", reason),
+            ("webhook_url", webhook_url),
+            ("completion_status", completion_status),
+            ("status_reason", status_reason),
+        ):
+            if value:
+                payload[key] = value
+        return await self._request("POST", "refunds/initiate", json=payload)
+
+    async def get_refund(self, *, refund_reference: str) -> dict[str, Any]:
+        """Retrieve the current status of one Kora refund."""
+        if not refund_reference:
+            raise KoraClientError("Refund reference is required")
+        return await self._request("GET", f"refunds/{refund_reference}")
+
     async def get_balance(self) -> dict[str, Any]:
         """Retrieve Kora balances without initiating a payment or payout."""
         data = await self._request("GET", "balances")

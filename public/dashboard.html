@@ -294,6 +294,8 @@
             <option value="ci-nigeria">Côte d’Ivoire → Nigeria</option>
             <option value="benin-nigeria">Bénin → Nigeria</option>
             <option value="cameroon-nigeria">Cameroun → Nigeria</option>
+            <option value="cameroon-ivory-coast">Cameroun → Côte d’Ivoire</option>
+            <option value="ivory-coast-cameroon">Côte d’Ivoire → Cameroun</option>
           </select></div>
           <div><label for="sim-direction">Type de flux</label><select id="sim-direction"><option value="payout">Pay-in source → payout bénéficiaire</option><option value="payin">Pay-in seul / crédit AFM</option></select></div>
         </div>
@@ -771,7 +773,8 @@
     const afmFee = baseAfterPayin * afmRate;
     const netSource = Math.max(0, baseAfterPayin - koraPayoutFee - afmFee - kaybicFee);
     const netDestination = netSource * fx;
-    const currencyLabel = document.getElementById("sim-corridor").value === "ci-ghana" ? "GHS" : (document.getElementById("sim-corridor").value === "ci-nigeria" || document.getElementById("sim-corridor").value === "benin-nigeria" || document.getElementById("sim-corridor").value === "cameroon-nigeria" ? "NGN" : "unités destination");
+    const selectedCorridor = document.getElementById("sim-corridor").value;
+    const currencyLabel = selectedCorridor === "ci-ghana" ? "GHS" : (selectedCorridor === "cameroon-ivory-coast" ? "XOF" : (selectedCorridor === "ivory-coast-cameroon" ? "XAF" : (selectedCorridor === "ci-nigeria" || selectedCorridor === "benin-nigeria" || selectedCorridor === "cameroon-nigeria" ? "NGN" : "unités destination")));
     const totalFees = kaybicFee + koraPayinFee + koraPayoutFee + afmFee;
     document.getElementById("sim-total-fees").textContent = "− " + fmtAmount(totalFees);
     document.getElementById("sim-net").textContent = fmtAmount(netDestination) + " " + currencyLabel;
@@ -798,8 +801,8 @@
     try {
       const amount = simNum("sim-amount");
       const corridor = document.getElementById("sim-corridor").value;
-      const destination = corridor === "ci-ghana" ? "GHS" : "NGN";
-      const source = corridor === "cameroon-nigeria" ? "XAF" : "XOF";
+      const destination = corridor === "ci-ghana" ? "GHS" : (corridor === "cameroon-ivory-coast" ? "XOF" : (corridor === "ivory-coast-cameroon" ? "XAF" : "NGN"));
+      const source = (corridor === "cameroon-nigeria" || corridor === "cameroon-ivory-coast") ? "XAF" : "XOF";
       const pct = id => amount * simNum(id) / 100;
       const direction = document.getElementById("sim-direction").value;
       const payload = {
