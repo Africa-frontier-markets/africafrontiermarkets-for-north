@@ -87,3 +87,18 @@ async def test_poll_charge_falls_back_to_payment_reference_only_on_404():
     result = await poll_charge(client, ("transaction-ref", "payment-ref"), attempts=3, delay=0)
     assert status_of(result) == "settled"
     assert client.charge_calls == ["transaction-ref", "payment-ref"]
+
+
+from scripts.kora_sandbox_refund_e2e import payin_failure_reason
+
+
+def test_stk_processing_is_classified_as_expired_without_refund():
+    assert payin_failure_reason("processing", "STK_PROMPT") == "stk_prompt_expired"
+
+
+def test_stk_terminal_expired_status_is_classified_explicitly():
+    assert payin_failure_reason("expired", "STK_PROMPT") == "stk_prompt_expired"
+
+
+def test_non_stk_failure_keeps_generic_non_refundable_reason():
+    assert payin_failure_reason("failed", "OTP") == "pay-in did not reach a refundable success status"

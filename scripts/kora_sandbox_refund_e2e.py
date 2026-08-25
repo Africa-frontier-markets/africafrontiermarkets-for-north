@@ -29,6 +29,16 @@ from config.config import Settings
 from payment_hub.kora_client import KoraClient, KoraClientError
 
 SUCCESS_STATUSES = {"success", "successful", "completed", "settled"}
+PENDING_STATUSES = {"", "processing", "pending", "requires_authorization"}
+EXPIRED_STATUSES = {"expired", "timeout", "timed_out"}
+
+
+def payin_failure_reason(status: str, auth_model: str) -> str:
+    """Return a stable non-financial outcome for an unconfirmed pay-in."""
+    normalized_status = status.lower()
+    if auth_model == "STK_PROMPT" and normalized_status in PENDING_STATUSES | EXPIRED_STATUSES:
+        return "stk_prompt_expired"
+    return "pay-in did not reach a refundable success status"
 
 
 def settings_from_env() -> Settings:
@@ -176,7 +186,15 @@ async def run() -> int:
     final_payin = await poll_charge(client, payin_references, poll_attempts, poll_delay)
     final_payin_status = status_of(final_payin)
     if final_payin_status not in SUCCESS_STATUSES:
-        print(json.dumps({"refund_skipped": True, "reason": "pay-in did not reach a refundable success status", "payin_status": final_payin_status}, default=str))
+        reason = payin_failure_reason(final_payin_status, auth_model)
+        print(json.dumps({
+            "refund_skipped": True,
+            "stk_prompt_expired": reason == "stk_prompt_expired",
+            "reason": reason,
+            "payin_status": final_payin_status,
+            "poll_window_seconds": round(poll_attempts * poll_delay, 1),
+            "elapsed_seconds": round(time.monotonic() - started_at, 3),
+        }, default=str))
         return 2
 
     refund = await client.initiate_refund(
