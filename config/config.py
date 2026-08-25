@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Payment Providers
     kora_api_key: str | None = None
     kora_secret_key: str | None = None
+    kora_api_base_url: str = "https://api.korapay.com/merchant/api/v1"
     kora_encryption_key: str | None = None
     fincra_api_key: str | None = None
     fincra_secret_key: str | None = None

@@ -1034,6 +1034,22 @@ class PaymentRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class PayoutRequest(BaseModel):
+    """Kora payout instruction; execution is opt-in and protected by confirmation."""
+    amount: Decimal = Field(..., gt=0)
+    currency: str = Field(..., min_length=3, max_length=3)
+    customer_email: str = Field(..., min_length=3)
+    customer_name: str | None = None
+    narration: str | None = None
+    mobile_money_operator: str | None = None
+    mobile_number: str | None = None
+    bank_country: str | None = None
+    bank_name: str | None = None
+    bank_code: str | None = None
+    account_number: str | None = None
+    execute: bool = Field(default=False, description="Must be true to call Kora; false returns a validation-only preview.")
+
+
 class PaymentSimulationRequest(BaseModel):
     """Non-financial sandbox instruction used by the FrontierPay PSP console."""
     amount: Decimal = Field(..., ge=Decimal("100000"))
@@ -1370,6 +1386,102 @@ async def create_payment(
         "created_at": transaction.created_at.isoformat(),
     }
 
+@app.post("/api/v1/payouts/kora", status_code=status.HTTP_201_CREATED)
+async def create_kora_payout(
+    payout: PayoutRequest,
+    request: Request,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate or execute a Kora payout.
+
+    The default is validation-only. A live payout requires execute=true and an
+    explicit confirmation header, preventing accidental fund movement from a
+    retry, UI preview or automated test.
+    """
+    if bool(payout.mobile_money_operator) != bool(payout.mobile_number):
+        raise HTTPException(status_code=422, detail="Mobile Money operator and number must be provided together")
+    if not (payout.mobile_money_operator and payout.mobile_number) and not payout.account_number:
+        raise HTTPException(status_code=422, detail="A Mobile Money destination or bank account is required")
+    if payout.execute and request.headers.get("X-AFM-Payout-Confirmation") != "CONFIRM":
+        raise HTTPException(status_code=428, detail="Explicit payout confirmation is required")
+    reference = f"afm-payout-{uuid.uuid4().hex}"
+    destination_type = "mobile_money" if payout.mobile_money_operator else "bank_account"
+    account = await get_or_create_virtual_account(user_id, db)
+    transaction = Transaction(
+        idempotency_key=reference,
+        user_id=user_id,
+        psp=PSPType.KORA,
+        amount=payout.amount,
+        currency=payout.currency.upper(),
+        net_amount=payout.amount,
+        fee_currency=payout.currency.upper(),
+        status=PaymentStatus.PROCESSING,
+        virtual_account_id=account.id,
+        ledger_namespace="afm_payments",
+        txn_metadata={
+            "operation": "payout",
+            "destination_type": destination_type,
+            "reconciliation_status": "pending",
+            "balance_affecting": False,
+        },
+    )
+    db.add(transaction)
+    await db.flush()
+    if not payout.execute:
+        await db.commit()
+        await db.refresh(transaction)
+        return {
+            "reference": reference,
+            "transaction_id": str(transaction.id),
+            "status": "validated",
+            "execution_mode": "validation_only",
+            "destination_type": destination_type,
+            "amount": str(payout.amount.quantize(Decimal("0.01"))),
+            "currency": payout.currency.upper(),
+            "funds_movement": False,
+            "ledger_write": False,
+        }
+    if get_settings().is_development:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Live payout is disabled in development")
+    try:
+        result = await KoraClient(get_settings()).create_payout(
+            reference=reference,
+            amount=payout.amount,
+            currency=payout.currency,
+            customer_email=payout.customer_email,
+            customer_name=payout.customer_name,
+            narration=payout.narration,
+            mobile_money_operator=payout.mobile_money_operator,
+            mobile_number=payout.mobile_number,
+            bank_country=payout.bank_country,
+            bank_name=payout.bank_name,
+            bank_code=payout.bank_code,
+            account_number=payout.account_number,
+        )
+    except KoraClientError as exc:
+        transaction.status = PaymentStatus.FAILED
+        transaction.error_message = "Kora payout is temporarily unavailable"
+        transaction.txn_metadata = {**(transaction.txn_metadata or {}), "reconciliation_status": "exception"}
+        await db.commit()
+        raise HTTPException(status_code=502, detail="Kora payout is temporarily unavailable") from exc
+    transaction.psp_transaction_id = str(result.get("reference") or result.get("transaction_reference") or reference)
+    transaction.psp_response = result
+    transaction.status = PaymentStatus.PROCESSING
+    await db.commit()
+    return {
+        "reference": reference,
+        "transaction_id": str(transaction.id),
+        "status": str(result.get("status") or "processing"),
+        "execution_mode": "kora_live",
+        "destination_type": destination_type,
+        "kora_response": result,
+        "funds_movement": True,
+        "ledger_write": False,
+    }
+
+
 @app.get("/api/v1/payments/{transaction_id}")
 async def get_payment(
     transaction_id: str,
@@ -1395,15 +1507,95 @@ async def get_payment(
         "created_at": transaction.created_at.isoformat(),
     }
 
-async def process_kora_webhook_business_event(body: dict, event_type: str) -> None:
-    """Run the non-financial webhook business step before marking processed.
+async def process_kora_webhook_business_event(
+    body: dict, event_type: str, db: AsyncSession
+) -> None:
+    """Apply a verified Kora event to the AFM transaction and ledger.
 
-    The current AFM phase only validates and journals the event. Payment or
-    payout execution is deliberately not performed by inbound webhooks.
+    Webhooks never initiate money movement. They only reconcile an already
+    created transaction, and successful payout events create one idempotent
+    debit entry for the linked AFM virtual account.
     """
     data = body.get("data") if isinstance(body.get("data"), dict) else body
-    if event_type.startswith("payment") and not data.get("reference"):
-        raise ValueError("Payment webhook is missing a reference")
+    reference = str(
+        data.get("reference")
+        or data.get("transaction_reference")
+        or data.get("payment_reference")
+        or ""
+    )
+    if not reference:
+        raise ValueError("Kora webhook is missing a transaction reference")
+
+    event_name = event_type.lower()
+    is_payout = event_name.startswith(("transfer", "payout", "disbursement"))
+    transaction_result = await db.execute(
+        select(Transaction).where(
+            or_(
+                Transaction.idempotency_key == reference,
+                Transaction.psp_transaction_id == reference,
+            ),
+            Transaction.ledger_namespace == "afm_payments",
+        )
+    )
+    transaction = transaction_result.scalar_one_or_none()
+    if transaction is None or not hasattr(transaction, "user_id"):
+        if is_payout:
+            raise ValueError("Kora payout webhook reference does not match an AFM transaction")
+        # Preserve receipt-only handling for legacy payment events that were
+        # not initiated by the current AFM ledger workflow.
+        return
+
+    status_value = str(data.get("status") or "").lower()
+    transaction.webhook_received_at = datetime.now(timezone.utc)
+    transaction.psp_response = {**(transaction.psp_response or {}), "webhook": data}
+    if status_value in {"success", "successful", "completed", "settled"}:
+        transaction.status = PaymentStatus.COMPLETED
+        transaction.settled_at = datetime.now(timezone.utc)
+        if is_payout and transaction.virtual_account_id:
+            existing_entry = (
+                await db.execute(
+                    select(VirtualLedgerEntry).where(
+                        VirtualLedgerEntry.reference_type == "kora_payout",
+                        VirtualLedgerEntry.reference_id == reference,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_entry is None:
+                db.add(
+                    VirtualLedgerEntry(
+                        virtual_account_id=transaction.virtual_account_id,
+                        entry_type="payout",
+                        direction="debit",
+                        amount=transaction.amount,
+                        currency=transaction.currency,
+                        reference_type="kora_payout",
+                        reference_id=reference,
+                        description="Kora payout reconciled",
+                        entry_metadata={
+                            "transaction_id": str(transaction.id),
+                            "reconciliation_status": "matched",
+                            "balance_affecting": True,
+                        },
+                    )
+                )
+                transaction.txn_metadata = {
+                    **(transaction.txn_metadata or {}),
+                    "reconciliation_status": "matched",
+                    "ledger_entry_count": int((transaction.txn_metadata or {}).get("ledger_entry_count", 0)) + 1,
+                }
+    elif status_value in {"failed", "cancelled", "canceled", "reversed"}:
+        transaction.status = PaymentStatus.FAILED
+        transaction.error_message = str(data.get("message") or f"Kora payout status: {status_value}")[:255]
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "reconciliation_status": "exception",
+        }
+    else:
+        transaction.status = PaymentStatus.PROCESSING
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "reconciliation_status": "pending",
+        }
 
 
 @app.post("/webhooks/kora")
@@ -1450,7 +1642,7 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Webhook idempotency store unavailable")
 
     try:
-        await process_kora_webhook_business_event(body, event_type)
+        await process_kora_webhook_business_event(body, event_type, db)
         event.status = "processed"
         event.processed_at = datetime.now(timezone.utc)
         await db.commit()

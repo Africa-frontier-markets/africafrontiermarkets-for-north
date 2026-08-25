@@ -74,6 +74,7 @@ from config.logging_config import configure_logging
 from common.fx import FX_RATES_TO_USD, convert_usd_bounds
 from payment_hub.models import Transaction, PaymentStatus, PSPType
 from payment_hub.psp_router import psp_router
+from payment_hub.kora_client import KoraClient, KoraClientError
 
 logger = configure_logging()
 
@@ -367,9 +368,12 @@ class PaymentService:
                 transaction.psp_transaction_id = psp_response.get("psp_transaction_id")
                 transaction.psp_response = psp_response
 
+                psp_status = str(psp_response.get("status") or "").lower()
                 if psp_response.get("success"):
                     transaction.status = PaymentStatus.COMPLETED
                     transaction.settled_at = datetime.now(timezone.utc)
+                elif psp_status in {"processing", "pending", "requires_authorization"}:
+                    transaction.status = PaymentStatus.PROCESSING
                 else:
                     transaction.status = PaymentStatus.FAILED
                     transaction.error_message = psp_response.get("error", "PSP processing failed")
@@ -440,45 +444,47 @@ class PaymentService:
             raise  # Re-raise to be caught by orphan cleanup
 
     async def _call_kora(self, client, transaction, phone_number, settings):
-        """Call Kora API."""
+        """Initiate the documented Kora Mobile Money charge."""
         if settings.is_development:
             logger.warning("Kora simulated")
             return {
                 "success": True,
-                "psp_transaction_id": f"kora_sim_{hashlib.sha256(transaction.idempotency_key.encode()).hexdigest()[:16]}",
                 "status": "success",
+                "psp_transaction_id": f"kora_sim_{hashlib.sha256(transaction.idempotency_key.encode()).hexdigest()[:16]}",
             }
         if not settings.kora_secret_key:
-            # 🔴 FIX: never silently fake a successful payment outside of
-            # development. Previously `not kora_secret_key` alone triggered
-            # simulation even in production — a misconfiguration (missing
-            # env var) would mark real transactions COMPLETED with no
-            # money ever moved.
             raise PSPAPIError("Kora secret key not configured in production")
+        if not phone_number:
+            raise ValidationError("phone_number required for Kora mobile_money")
 
-        url = "https://api.korapay.com/merchant/api/v1/charges/mobile-money"
-        payload = {
-            "amount": float(transaction.amount),
-            "currency": transaction.currency,
-            "reference": transaction.idempotency_key,
-            "customer": {
-                "email": transaction.txn_metadata.get("email", "customer@afm.com"),
-            },
-            "mobile_money": {
-                "phone": phone_number,
-                "provider": self._detect_provider(phone_number, transaction.currency),
-            } if phone_number else None,
-        }
-        headers = {"Authorization": f"Bearer {settings.kora_secret_key}", "Content-Type": "application/json"}
+        try:
+            result = await KoraClient(settings, client=client).initiate_mobile_money_charge(
+                amount=transaction.amount,
+                currency=transaction.currency,
+                reference=transaction.idempotency_key,
+                phone_number=phone_number,
+                customer_email=(transaction.txn_metadata or {}).get("email", "customer@afm.com"),
+                customer_name=(transaction.txn_metadata or {}).get("name"),
+                notification_url=(transaction.txn_metadata or {}).get("notification_url"),
+                redirect_url=(transaction.txn_metadata or {}).get("redirect_url"),
+                description=(transaction.txn_metadata or {}).get("description", "AFM Mobile Money payment"),
+                merchant_bears_cost=bool((transaction.txn_metadata or {}).get("merchant_bears_cost", True)),
+                metadata={"afm_reference": transaction.idempotency_key},
+            )
+        except KoraClientError as exc:
+            raise PSPAPIError(str(exc)) from exc
 
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-
+        status_value = str(result.get("status") or "processing").lower()
+        auth_model = result.get("auth_model")
+        transaction_reference = result.get("transaction_reference") or result.get("reference")
         return {
-            "success": data.get("status") == "success",
-            "psp_transaction_id": data.get("data", {}).get("reference"),
-            "raw_response": data,
+            "success": status_value in {"success", "successful", "completed"},
+            "status": status_value,
+            "auth_model": auth_model,
+            "psp_transaction_id": transaction_reference,
+            "payment_reference": result.get("payment_reference"),
+            "authorization": result.get("authorization"),
+            "raw_response": result,
         }
 
     async def _call_fincra(self, client, transaction, settings):
