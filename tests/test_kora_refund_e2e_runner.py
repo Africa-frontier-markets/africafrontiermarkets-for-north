@@ -66,3 +66,24 @@ async def test_poll_charge_retries_transient_kora_error():
     result = await poll_charge(client, "payin-flaky", attempts=5, delay=0)
     assert status_of(result) == "success"
     assert client.charge_calls == ["payin-flaky", "payin-flaky"]
+
+
+class ReferenceFallbackClient(FakeRefundClient):
+    def __init__(self):
+        super().__init__()
+        self.charge_statuses = [{"status": "settled"}]
+
+    async def verify_charge(self, *, reference):
+        from payment_hub.kora_client import KoraClientError
+        self.charge_calls.append(reference)
+        if reference == "transaction-ref":
+            raise KoraClientError("Kora API request failed (404): Charge not found")
+        return {"status": "settled"}
+
+
+@pytest.mark.asyncio
+async def test_poll_charge_falls_back_to_payment_reference_only_on_404():
+    client = ReferenceFallbackClient()
+    result = await poll_charge(client, ("transaction-ref", "payment-ref"), attempts=3, delay=0)
+    assert status_of(result) == "settled"
+    assert client.charge_calls == ["transaction-ref", "payment-ref"]
