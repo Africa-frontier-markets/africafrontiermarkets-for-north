@@ -1826,11 +1826,25 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     settings = get_settings()
     webhook_secret = settings.kora_webhook_secret or settings.kora_secret_key
     if not webhook_secret or not verify_kora_webhook_signature(signed_data, signature, webhook_secret):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+        # Kora recommends HTTP 200 for webhook acknowledgement. Invalid
+        # signatures are ignored without persistence or business processing;
+        # returning 200 prevents pointless provider retries while preserving
+        # the security boundary.
+        logger.warning("Kora webhook ignored: invalid signature")
+        return {"status": "ignored", "reason": "invalid_signature"}
 
     payload_hash = hashlib.sha256(payload).hexdigest()
-    event_id = str(body.get("id") or signed_data.get("id") or signed_data.get("reference") or payload_hash)[:128]
     event_type = str(body.get("event") or body.get("type") or "unknown")[:80]
+    provider_event_id = body.get("id") or signed_data.get("id")
+    provider_reference = (
+        signed_data.get("reference")
+        or signed_data.get("transaction_reference")
+        or signed_data.get("payment_reference")
+    )
+    event_id = str(
+        provider_event_id
+        or f"{event_type}:{provider_reference or 'unknown'}:{payload_hash}"
+    )[:128]
 
     event = KoraWebhookEvent(
         event_id=event_id,
