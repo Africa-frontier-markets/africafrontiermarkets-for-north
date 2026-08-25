@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("currency", sa.String(length=3), nullable=False),
         sa.Column("reason", sa.String(length=200)),
         sa.Column("status", sa.String(length=20), nullable=False, server_default="requested"),
-        sa.Column("psp_response", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("psp_response", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column("error_message", sa.Text()),
         sa.Column("requested_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("completed_at", sa.DateTime(timezone=True)),
