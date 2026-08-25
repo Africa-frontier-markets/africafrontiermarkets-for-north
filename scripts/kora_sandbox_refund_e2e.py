@@ -85,6 +85,7 @@ async def run() -> int:
     phone = os.getenv("KORA_TEST_PHONE", "237655123456")
     email = os.getenv("KORA_TEST_EMAIL", "sandbox@example.com")
     webhook_url = os.getenv("AFM_WEBHOOK_URL", "https://africafrontiermarkets.com/webhooks/kora")
+    corridor = os.getenv("KORA_TEST_CORRIDOR", "CM-CI").upper()
     poll_attempts = int(os.getenv("KORA_REFUND_POLL_ATTEMPTS", "6"))
     poll_delay = float(os.getenv("KORA_REFUND_POLL_DELAY_SECONDS", "5"))
     started_at = time.monotonic()
@@ -104,7 +105,7 @@ async def run() -> int:
         phone_number=phone,
         customer_email=email,
         notification_url=webhook_url,
-        metadata={"afm_test": "refund_e2e", "execution_mode": "sandbox", "corridor": "CM-CI"},
+        metadata={"afm_test": "refund_e2e", "execution_mode": "sandbox", "corridor": corridor},
     )
     payin_reference_from_api = str(payin.get("transaction_reference") or payin.get("payment_reference") or payin_reference)
     print(json.dumps({"payin_status": status_of(payin), "payin_reference": payin_reference_from_api, "auth_model": payin.get("auth_model")}, default=str))
