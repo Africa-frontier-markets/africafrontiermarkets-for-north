@@ -40,6 +40,29 @@ def sign(data: dict) -> str:
     return hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
 
 
+# Fixture shape copied from Kora's documented Mobile Money webhook example.
+KORA_DOCUMENTED_MOBILE_MONEY_FIXTURE = {
+    "event": "charge.success",
+    "data": {
+        "fee": 10,
+        "amount": 1000,
+        "status": "success",
+        "currency": "KES",
+        "reference": "merchant-payment-reference-001",
+        "payment_method": "mobile_money",
+        "payment_reference": "merchant-payment-reference-001",
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_kora_documented_mobile_money_fixture_signature_is_deterministic():
+    data = KORA_DOCUMENTED_MOBILE_MONEY_FIXTURE["data"]
+    signature = sign(data)
+    assert verify_kora_webhook_signature(data, signature, SECRET)
+    assert signature == "badcb07268a64ead80e590e44e79872c5cc60c12402d9e0595834fe48219f4b3"
+
+
 class FakeResult:
     def __init__(self, value):
         self.value = value
@@ -92,7 +115,8 @@ async def test_kora_webhook_uses_kora_secret_key_fallback(monkeypatch):
     data = {"reference": "evt-secret-key", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
     response = await kora_webhook(make_request(body, sign(data)), FakeDb())
-    assert response == {"status": "processed", "event_id": "evt-secret-key"}
+    assert response["status"] == "processed"
+    assert response["event_id"].startswith("payment.success:evt-secret-key:")
 
 
 @pytest.mark.asyncio
@@ -107,7 +131,8 @@ async def test_kora_webhook_marks_business_event_processed(monkeypatch):
     body = {"event": "payment.success", "data": data}
     db = FakeDb()
     response = await kora_webhook(make_request(body, sign(data)), db)
-    assert response == {"status": "processed", "event_id": "evt-1"}
+    assert response["status"] == "processed"
+    assert response["event_id"].startswith("payment.success:evt-1:")
     assert db.records[0].status == "processed"
     assert db.records[0].processed_at is not None
     assert db.records[0].payload_hash == hashlib.sha256(json.dumps(body, separators=(",", ":")).encode()).hexdigest()
@@ -124,7 +149,8 @@ async def test_kora_webhook_duplicate_is_acknowledged_without_processing(monkeyp
     data = {"reference": "evt-duplicate", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
     response = await kora_webhook(make_request(body, sign(data)), FakeDb(duplicate=True))
-    assert response == {"status": "already_processed", "event_id": "evt-duplicate"}
+    assert response["status"] == "already_processed"
+    assert response["event_id"].startswith("payment.success:evt-duplicate:")
 
 
 @pytest.mark.asyncio
@@ -158,6 +184,21 @@ async def test_kora_webhook_rejects_invalid_signature(monkeypatch):
     ))
     data = {"reference": "evt-invalid", "amount": 100, "currency": "XOF"}
     body = {"event": "payment.success", "data": data}
-    with pytest.raises(Exception) as exc_info:
-        await kora_webhook(make_request(body, "invalid"), FakeDb())
-    assert getattr(exc_info.value, "status_code", None) == 401
+    response = await kora_webhook(make_request(body, "invalid"), FakeDb())
+    assert response == {"status": "ignored", "reason": "invalid_signature"}
+
+
+@pytest.mark.asyncio
+async def test_kora_webhook_fallback_event_id_includes_event_and_payload_hash(monkeypatch):
+    monkeypatch.setattr("api_gateway.main.get_settings", lambda: SimpleNamespace(
+        kora_webhook_secret=SECRET,
+        kora_secret_key=None,
+        kora_webhook_alert_threshold=3,
+        kora_webhook_alert_url=None,
+    ))
+    data = {"reference": "same-ref", "amount": 100, "currency": "XOF"}
+    body = {"event": "charge.success", "data": data}
+    db = FakeDb()
+    response = await kora_webhook(make_request(body, sign(data)), db)
+    assert response["event_id"].startswith("charge.success:same-ref:")
+    assert len(response["event_id"]) <= 128
