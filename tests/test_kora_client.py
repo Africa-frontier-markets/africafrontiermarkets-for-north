@@ -97,3 +97,74 @@ async def test_balance_rejects_unsuccessful_kora_response(settings):
 
     with pytest.raises(KoraClientError, match="not successful"):
         await KoraClient(settings, client).get_balance()
+
+
+@pytest.mark.asyncio
+async def test_mobile_money_charge_uses_documented_number_payload(settings):
+    response = httpx.Response(200, json={
+        "status": True,
+        "data": {
+            "auth_model": "STK_PROMPT",
+            "status": "processing",
+            "transaction_reference": "KPY-PAY-1",
+            "payment_reference": "ref-1",
+        },
+    })
+    client = FakeAsyncClient(response)
+
+    result = await KoraClient(settings, client).initiate_mobile_money_charge(
+        amount=Decimal("100000"), currency="XOF", reference="ref-1",
+        phone_number="2250700000000", customer_email="client@example.com",
+    )
+
+    assert result["auth_model"] == "STK_PROMPT"
+    assert client.request_url.endswith("/merchant/api/v1/charges/mobile-money")
+    assert client.request_json["mobile_money"] == {"number": "2250700000000"}
+    assert "phone" not in client.request_json["mobile_money"]
+    assert "provider" not in client.request_json["mobile_money"]
+
+
+@pytest.mark.asyncio
+async def test_payout_mobile_money_uses_destination_contract(settings):
+    response = httpx.Response(200, json={"status": True, "data": {"status": "processing", "reference": "payout-1"}})
+    client = FakeAsyncClient(response)
+
+    await KoraClient(settings, client).create_payout(
+        reference="payout-1", amount=Decimal("95000"), currency="NGN",
+        customer_email="beneficiary@example.com", mobile_money_operator="mtn-ng",
+        mobile_number="2348012345678",
+    )
+
+    destination = client.request_json["destination"]
+    assert client.request_url.endswith("/merchant/api/v1/transactions/disburse")
+    assert destination["type"] == "mobile_money"
+    assert destination["mobile_money"] == {"operator": "mtn-ng", "mobile_number": "2348012345678"}
+    assert destination["customer"]["email"] == "beneficiary@example.com"
+
+
+@pytest.mark.asyncio
+async def test_payout_bank_uses_destination_contract(settings):
+    response = httpx.Response(200, json={"status": True, "data": {"status": "processing", "reference": "payout-2"}})
+    client = FakeAsyncClient(response)
+
+    await KoraClient(settings, client).create_payout(
+        reference="payout-2", amount=Decimal("95000"), currency="NGN",
+        customer_email="beneficiary@example.com", bank_code="058",
+        account_number="0123456789", bank_country="NG",
+    )
+
+    destination = client.request_json["destination"]
+    assert destination["type"] == "bank_account"
+    assert destination["bank_account"] == {"account": "0123456789", "bank": "058"}
+    assert destination["bank_country"] == "NG"
+
+
+@pytest.mark.asyncio
+async def test_mobile_money_otp_authorization_uses_reference_and_token(settings):
+    response = httpx.Response(200, json={"status": True, "data": {"status": "processing", "auth_model": "STK_PROMPT"}})
+    client = FakeAsyncClient(response)
+
+    await KoraClient(settings, client).authorize_mobile_money(reference="KPY-PAY-1", token="123456")
+
+    assert client.request_url.endswith("/merchant/api/v1/charges/mobile-money/authorize")
+    assert client.request_json == {"reference": "KPY-PAY-1", "token": "123456"}
