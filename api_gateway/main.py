@@ -46,6 +46,7 @@ from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balanc
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
+    KoraRefund,
     Transaction,
     PaymentStatus,
     PSPType,
@@ -107,7 +108,7 @@ app.add_middleware(
     allow_origins=settings.get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key", "X-AFM-Payout-Confirmation", "X-AFM-Refund-Confirmation"],
     max_age=600,
 )
 
@@ -1050,12 +1051,20 @@ class PayoutRequest(BaseModel):
     execute: bool = Field(default=False, description="Must be true to call Kora; false returns a validation-only preview.")
 
 
+class RefundRequest(BaseModel):
+    """Kora refund instruction; execution is opt-in and idempotent."""
+    transaction_id: uuid.UUID
+    amount: Decimal | None = Field(default=None, gt=0)
+    reason: str | None = Field(default=None, max_length=200)
+    execute: bool = Field(default=False, description="Must be true to call Kora; false returns a validation-only preview.")
+
+
 class PaymentSimulationRequest(BaseModel):
     """Non-financial sandbox instruction used by the FrontierPay PSP console."""
     amount: Decimal = Field(..., ge=Decimal("100000"))
     source_currency: str = Field(..., min_length=3, max_length=3)
     beneficiary_currency: str = Field(..., min_length=3, max_length=3)
-    corridor: str = Field(..., pattern="^(ci-ghana|ci-nigeria|benin-nigeria|cameroon-nigeria)$")
+    corridor: str = Field(..., pattern="^(ci-ghana|ci-nigeria|benin-nigeria|cameroon-nigeria|cameroon-ivory-coast|ivory-coast-cameroon)$")
     kaybic_fee: Decimal = Field(default=Decimal("0"), ge=0)
     kora_payin_fee: Decimal = Field(default=Decimal("0"), ge=0)
     kora_payout_fee: Decimal = Field(default=Decimal("0"), ge=0)
@@ -1482,6 +1491,124 @@ async def create_kora_payout(
     }
 
 
+@app.post("/api/v1/payments/{transaction_id}/refund", status_code=status.HTTP_201_CREATED)
+async def create_kora_refund(
+    transaction_id: uuid.UUID,
+    refund: RefundRequest,
+    request: Request,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview or initiate an idempotent refund for a settled AFM pay-in.
+
+    The route never refunds a payout and never accepts a request without a
+    payment reference created by AFM. A real Kora call requires both
+    ``execute=true`` and ``X-AFM-Refund-Confirmation: CONFIRM``.
+    """
+    if refund.transaction_id != transaction_id:
+        raise HTTPException(status_code=422, detail="Transaction id does not match the request path")
+
+    transaction = await db.get(Transaction, transaction_id)
+    if (
+        transaction is None
+        or transaction.user_id != user_id
+        or transaction.psp != PSPType.KORA
+        or transaction.ledger_namespace != "afm_payments"
+    ):
+        raise NotFoundError("Payment transaction not found")
+    if str((transaction.txn_metadata or {}).get("operation") or "").lower() == "payout":
+        raise HTTPException(status_code=409, detail="Payouts cannot be refunded through the pay-in refund route")
+    if transaction.status not in {PaymentStatus.COMPLETED, PaymentStatus.REFUNDED}:
+        raise HTTPException(status_code=409, detail="Only a completed pay-in can be refunded")
+    if not transaction.psp_transaction_id:
+        raise HTTPException(status_code=409, detail="Kora payment reference is missing")
+
+    amount = (refund.amount or transaction.amount).quantize(Decimal("0.01"))
+    if amount > transaction.amount:
+        raise HTTPException(status_code=422, detail="Refund amount cannot exceed the payment amount")
+    idempotency_key = request.headers.get("X-Idempotency-Key", "").strip()
+    if refund.execute and len(idempotency_key) < 8:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key is required for an executed refund")
+    if refund.execute and request.headers.get("X-AFM-Refund-Confirmation") != "CONFIRM":
+        raise HTTPException(status_code=428, detail="Explicit refund confirmation is required")
+
+    if not refund.execute:
+        return {
+            "status": "validated",
+            "execution_mode": "validation_only",
+            "transaction_id": str(transaction.id),
+            "payment_reference": transaction.psp_transaction_id,
+            "amount": str(amount),
+            "currency": transaction.currency,
+            "funds_movement": False,
+            "ledger_write": False,
+        }
+    if get_settings().is_development:
+        raise HTTPException(status_code=409, detail="Executed refunds are disabled in development")
+
+    refund_reference = f"afm-ref-{hashlib.sha256(idempotency_key.encode()).hexdigest()[:40]}"
+    existing_result = await db.execute(
+        select(KoraRefund).where(KoraRefund.idempotency_key == idempotency_key)
+    )
+    existing_refund = existing_result.scalar_one_or_none()
+    if existing_refund is not None:
+        return {
+            "status": existing_refund.status,
+            "refund_reference": existing_refund.refund_reference,
+            "payment_reference": existing_refund.payment_reference,
+            "amount": str(existing_refund.amount),
+            "currency": existing_refund.currency,
+            "idempotent_replay": True,
+            "funds_movement": existing_refund.status in {"requested", "processing", "success"},
+        }
+
+    refund_record = KoraRefund(
+        transaction_id=transaction.id,
+        refund_reference=refund_reference,
+        idempotency_key=idempotency_key,
+        payment_reference=transaction.psp_transaction_id,
+        amount=amount,
+        currency=transaction.currency,
+        reason=refund.reason,
+        status="requested",
+        psp_response={},
+    )
+    db.add(refund_record)
+    await db.commit()
+    try:
+        result = await KoraClient(get_settings()).initiate_refund(
+            payment_reference=transaction.psp_transaction_id,
+            refund_reference=refund_reference,
+            amount=amount,
+            reason=refund.reason,
+            webhook_url="https://africafrontiermarkets.com/webhooks/kora",
+        )
+        refund_record.status = str(result.get("status") or "processing").lower()
+        refund_record.psp_response = result
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "refund_status": refund_record.status,
+            "refund_reference": refund_reference,
+        }
+        await db.commit()
+    except KoraClientError as exc:
+        refund_record.status = "failed"
+        refund_record.error_message = "Kora refund is temporarily unavailable"
+        await db.commit()
+        raise HTTPException(status_code=502, detail="Kora refund is temporarily unavailable") from exc
+
+    return {
+        "status": refund_record.status,
+        "refund_reference": refund_reference,
+        "payment_reference": transaction.psp_transaction_id,
+        "amount": str(amount),
+        "currency": transaction.currency,
+        "idempotent_replay": False,
+        "funds_movement": True,
+        "ledger_write": False,
+    }
+
+
 @app.get("/api/v1/payments/{transaction_id}")
 async def get_payment(
     transaction_id: str,
@@ -1507,16 +1634,101 @@ async def get_payment(
         "created_at": transaction.created_at.isoformat(),
     }
 
+async def _process_kora_refund_webhook(data: dict, db: AsyncSession) -> None:
+    """Reconcile a refund callback and create one reversal entry at most."""
+    refund_reference = str(data.get("reference") or "")
+    payment_reference = str(data.get("payment_reference") or "")
+    if not refund_reference or not payment_reference:
+        raise ValueError("Kora refund webhook is missing refund or payment reference")
+
+    refund_result = await db.execute(
+        select(KoraRefund).where(
+            or_(
+                KoraRefund.refund_reference == refund_reference,
+                KoraRefund.payment_reference == payment_reference,
+            )
+        ).order_by(KoraRefund.created_at.desc())
+    )
+    refund = refund_result.scalars().first()
+    if refund is None:
+        raise ValueError("Kora refund webhook reference does not match an AFM refund")
+
+    transaction = await db.get(Transaction, refund.transaction_id)
+    if transaction is None or transaction.ledger_namespace != "afm_payments":
+        raise ValueError("Kora refund parent transaction is outside AFM payment ledger")
+
+    status_value = str(data.get("status") or "").lower()
+    refund.psp_response = {**(refund.psp_response or {}), "webhook": data}
+    if status_value in {"success", "successful", "completed", "settled"}:
+        refund.status = "success"
+        refund.completed_at = datetime.now(timezone.utc)
+        transaction.status = PaymentStatus.REFUNDED
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "refund_status": "success",
+            "refund_reference": refund.refund_reference,
+            "reconciliation_status": "matched",
+        }
+        if transaction.virtual_account_id:
+            existing_entry = (
+                await db.execute(
+                    select(VirtualLedgerEntry).where(
+                        VirtualLedgerEntry.reference_type == "kora_refund",
+                        VirtualLedgerEntry.reference_id == refund.refund_reference,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_entry is None:
+                db.add(
+                    VirtualLedgerEntry(
+                        virtual_account_id=transaction.virtual_account_id,
+                        entry_type="refund",
+                        direction="debit",
+                        amount=refund.amount,
+                        currency=refund.currency,
+                        reference_type="kora_refund",
+                        reference_id=refund.refund_reference,
+                        description="Kora pay-in refund reconciled",
+                        entry_metadata={
+                            "transaction_id": str(transaction.id),
+                            "payment_reference": refund.payment_reference,
+                            "reconciliation_status": "matched",
+                            "balance_affecting": True,
+                        },
+                    )
+                )
+    elif status_value in {"failed", "cancelled", "canceled", "reversed"}:
+        refund.status = "failed"
+        refund.error_message = str(data.get("status_reason") or data.get("message") or "Kora refund failed")[:255]
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "refund_status": "failed",
+            "refund_reference": refund.refund_reference,
+            "reconciliation_status": "exception",
+        }
+    else:
+        refund.status = "processing"
+        transaction.txn_metadata = {
+            **(transaction.txn_metadata or {}),
+            "refund_status": "processing",
+            "refund_reference": refund.refund_reference,
+        }
+
+
 async def process_kora_webhook_business_event(
     body: dict, event_type: str, db: AsyncSession
 ) -> None:
     """Apply a verified Kora event to the AFM transaction and ledger.
 
     Webhooks never initiate money movement. They only reconcile an already
-    created transaction, and successful payout events create one idempotent
-    debit entry for the linked AFM virtual account.
+    created transaction. Every payout or refund ledger entry is idempotent.
     """
     data = body.get("data") if isinstance(body.get("data"), dict) else body
+    event_name = event_type.lower()
+    if event_name.startswith("refund"):
+        await _process_kora_refund_webhook(data, db)
+        return
+
     reference = str(
         data.get("reference")
         or data.get("transaction_reference")
@@ -1526,7 +1738,6 @@ async def process_kora_webhook_business_event(
     if not reference:
         raise ValueError("Kora webhook is missing a transaction reference")
 
-    event_name = event_type.lower()
     is_payout = event_name.startswith(("transfer", "payout", "disbursement"))
     transaction_result = await db.execute(
         select(Transaction).where(
@@ -1541,8 +1752,6 @@ async def process_kora_webhook_business_event(
     if transaction is None or not hasattr(transaction, "user_id"):
         if is_payout:
             raise ValueError("Kora payout webhook reference does not match an AFM transaction")
-        # Preserve receipt-only handling for legacy payment events that were
-        # not initiated by the current AFM ledger workflow.
         return
 
     status_value = str(data.get("status") or "").lower()

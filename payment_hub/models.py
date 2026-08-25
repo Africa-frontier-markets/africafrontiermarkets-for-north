@@ -168,3 +168,29 @@ class KoraWebhookEvent(Base):
     received_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     processed_at = Column(DateTime(timezone=True))
     error_message = Column(String(255))
+
+
+class KoraRefund(Base):
+    """Idempotent refund command and reconciliation record for a Kora pay-in."""
+
+    __tablename__ = "kora_refunds"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="RESTRICT"), nullable=False, index=True)
+    refund_reference = Column(String(50), nullable=False, unique=True, index=True)
+    idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    payment_reference = Column(String(128), nullable=False, index=True)
+    amount = Column(Numeric(19, 8), nullable=False)
+    currency = Column(String(3), nullable=False)
+    reason = Column(String(200))
+    status = Column(String(20), nullable=False, default="requested")
+    psp_response = Column(JSON, default=dict)
+    error_message = Column(Text)
+    requested_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_kora_refunds_payment_status", "payment_reference", "status"),
+    )

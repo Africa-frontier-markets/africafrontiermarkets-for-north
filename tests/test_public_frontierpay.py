@@ -106,3 +106,22 @@ async def test_frontierpay_quote_chains_xaf_to_xof_through_usd(monkeypatch):
     assert result["rate"] == Decimal("1.00000000")
     assert [(item[1], item[2]) for item in calls] == [("XAF", "USD"), ("USD", "XOF")]
     assert [leg["rate"] for leg in result["legs"]] == [Decimal("0.0016"), Decimal("625")]
+
+
+@pytest.mark.parametrize(
+    ("corridor", "source_currency", "beneficiary_currency"),
+    [
+        ("cameroon-ivory-coast", "XAF", "XOF"),
+        ("ivory-coast-cameroon", "XOF", "XAF"),
+    ],
+)
+def test_cameroon_ivory_coast_corridor_contract(corridor, source_currency, beneficiary_currency):
+    payload = PaymentSimulationRequest(
+        amount=Decimal("100000"),
+        source_currency=source_currency,
+        beneficiary_currency=beneficiary_currency,
+        corridor=corridor,
+    )
+    assert payload.corridor == corridor
+    assert payload.source_currency == source_currency
+    assert payload.beneficiary_currency == beneficiary_currency

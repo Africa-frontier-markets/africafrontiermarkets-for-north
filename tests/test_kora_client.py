@@ -168,3 +168,52 @@ async def test_mobile_money_otp_authorization_uses_reference_and_token(settings)
 
     assert client.request_url.endswith("/merchant/api/v1/charges/mobile-money/authorize")
     assert client.request_json == {"reference": "KPY-PAY-1", "token": "123456"}
+
+
+@pytest.mark.asyncio
+async def test_refund_uses_documented_payload(settings):
+    response = httpx.Response(200, json={
+        "status": True,
+        "data": {
+            "refund_reference": "afm-ref-1",
+            "payment_reference": "KPY-PAY-1",
+            "status": "processing",
+            "amount_returned": 100000,
+            "currency": "XOF",
+        },
+    })
+    client = FakeAsyncClient(response)
+
+    result = await KoraClient(settings, client).initiate_refund(
+        payment_reference="KPY-PAY-1",
+        refund_reference="afm-ref-1",
+        amount=Decimal("100000"),
+        reason="Payout failed",
+        webhook_url="https://africafrontiermarkets.com/webhooks/kora",
+    )
+
+    assert result["status"] == "processing"
+    assert client.request_url.endswith("/merchant/api/v1/refunds/initiate")
+    assert client.request_json == {
+        "payment_reference": "KPY-PAY-1",
+        "reference": "afm-ref-1",
+        "amount": 100000.0,
+        "reason": "Payout failed",
+        "webhook_url": "https://africafrontiermarkets.com/webhooks/kora",
+    }
+
+
+@pytest.mark.asyncio
+async def test_refund_sandbox_fields_are_forwarded_only_when_explicit(settings):
+    response = httpx.Response(200, json={"status": True, "data": {"status": "success"}})
+    client = FakeAsyncClient(response)
+
+    await KoraClient(settings, client).initiate_refund(
+        payment_reference="KPY-PAY-1",
+        refund_reference="afm-ref-2",
+        completion_status="success",
+        status_reason="success test transaction",
+    )
+
+    assert client.request_json["completion_status"] == "success"
+    assert client.request_json["status_reason"] == "success test transaction"
