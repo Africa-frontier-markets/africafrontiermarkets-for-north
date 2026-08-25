@@ -48,8 +48,16 @@ class KoraClient:
                 detail = str(body.get("message") or "request rejected")
                 raise KoraClientError(f"Kora request was not successful: {detail}")
             return body["data"]
+        except httpx.HTTPStatusError as exc:
+            detail = "http error"
+            try:
+                payload = exc.response.json()
+                detail = str(payload.get("message") or payload.get("error") or detail)
+            except (ValueError, TypeError):
+                detail = exc.response.text[:160] or detail
+            raise KoraClientError(f"Kora API request failed ({exc.response.status_code}): {detail}") from exc
         except httpx.HTTPError as exc:
-            raise KoraClientError("Kora API request failed") from exc
+            raise KoraClientError("Kora API request failed (transport)") from exc
         except ValueError as exc:
             raise KoraClientError("Kora API response is not valid JSON") from exc
         finally:

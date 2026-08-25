@@ -217,3 +217,12 @@ async def test_refund_sandbox_fields_are_forwarded_only_when_explicit(settings):
 
     assert client.request_json["completion_status"] == "success"
     assert client.request_json["status_reason"] == "success test transaction"
+
+
+@pytest.mark.asyncio
+async def test_kora_http_status_error_is_diagnostic_without_secret(settings):
+    response = httpx.Response(404, json={"status": False, "message": "Charge not found"})
+    client = FakeAsyncClient(response)
+    with pytest.raises(KoraClientError, match=r"failed \(404\): Charge not found") as exc_info:
+        await KoraClient(settings, client).verify_charge(reference="missing-ref")
+    assert "sk_live_test-only" not in str(exc_info.value)

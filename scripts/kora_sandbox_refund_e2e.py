@@ -98,8 +98,10 @@ async def run() -> int:
     email = os.getenv("KORA_TEST_EMAIL", "sandbox@example.com")
     webhook_url = os.getenv("AFM_WEBHOOK_URL", "https://africafrontiermarkets.com/webhooks/kora")
     corridor = os.getenv("KORA_TEST_CORRIDOR", "CM-CI").upper()
-    poll_attempts = int(os.getenv("KORA_REFUND_POLL_ATTEMPTS", "6"))
-    poll_delay = float(os.getenv("KORA_REFUND_POLL_DELAY_SECONDS", "5"))
+    # STK_PROMPT requires the wallet owner to authorize on the handset. Keep
+    # polling long enough for that manual sandbox action; never transmit a PIN.
+    poll_attempts = int(os.getenv("KORA_REFUND_POLL_ATTEMPTS", "60"))
+    poll_delay = float(os.getenv("KORA_REFUND_POLL_DELAY_SECONDS", "10"))
     started_at = time.monotonic()
     base = f"afm-refund-sbx-{os.urandom(8).hex()}"
     payin_reference = f"{base}-payin"
@@ -120,7 +122,14 @@ async def run() -> int:
         metadata={"afm_test": "refund_e2e", "execution_mode": "sandbox", "corridor": corridor},
     )
     payin_reference_from_api = str(payin.get("transaction_reference") or payin.get("payment_reference") or payin_reference)
-    print(json.dumps({"payin_status": status_of(payin), "payin_reference": payin_reference_from_api, "auth_model": payin.get("auth_model")}, default=str))
+    auth_model = str(payin.get("auth_model") or "").upper()
+    print(json.dumps({"payin_status": status_of(payin), "payin_reference": payin_reference_from_api, "auth_model": auth_model}, default=str))
+    if auth_model == "STK_PROMPT":
+        print(json.dumps({
+            "manual_authorization_required": True,
+            "instruction": "Authorize the STK prompt on the sandbox handset; the PIN is never sent by AFM.",
+            "poll_window_seconds": round(poll_attempts * poll_delay, 1),
+        }))
 
     if str(payin.get("auth_model", "")).upper() == "OTP":
         token = os.getenv("KORA_TEST_OTP", "")
