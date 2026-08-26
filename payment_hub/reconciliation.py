@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from config.config import get_settings
@@ -87,11 +88,20 @@ async def reconcile_due_once(
         result = await db.execute(
             select(KoraPaymentReconciliation)
             .where(
-                KoraPaymentReconciliation.state == "scheduled",
-                KoraPaymentReconciliation.next_attempt_at <= now,
+                or_(
+                    and_(
+                        KoraPaymentReconciliation.state == "scheduled",
+                        KoraPaymentReconciliation.next_attempt_at <= now,
+                    ),
+                    and_(
+                        KoraPaymentReconciliation.state == "processing",
+                        KoraPaymentReconciliation.last_checked_at <= now - timedelta(minutes=5),
+                    ),
+                )
             )
             .order_by(KoraPaymentReconciliation.next_attempt_at)
             .limit(1)
+            .with_for_update(skip_locked=True)
         )
         task = result.scalar_one_or_none()
         if task is None:
@@ -99,6 +109,8 @@ async def reconcile_due_once(
         task.state = "processing"
         task.attempt_count += 1
         task.last_checked_at = now
+        task.locked_at = now
+        task.locked_by = f"afm-reconciliation-{os.getpid()}"
         task.updated_at = now
         await db.commit()
         task_id = task.id
@@ -127,6 +139,8 @@ async def reconcile_due_once(
         now = datetime.now(timezone.utc)
         task.provider_status = raw_status or task.provider_status
         task.last_error = error
+        task.locked_at = None
+        task.locked_by = None
         task.updated_at = now
         if transaction is not None:
             transaction.psp_response = {
