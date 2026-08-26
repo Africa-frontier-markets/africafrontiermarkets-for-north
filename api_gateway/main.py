@@ -7,7 +7,7 @@ import hashlib
 import json
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.config import get_settings
-from config.database import init_db, engine, get_db
+from config.database import init_db, engine, get_db, AsyncSessionLocal
 from config.exceptions import (
     AFMException, ValidationError, NotFoundError,
 )
@@ -43,6 +43,7 @@ from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
 from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balance
+from payment_hub.reconciliation import enqueue_reconciliation, reconciliation_worker
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
@@ -83,9 +84,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     })
     logger.info("Starting AFM API", environment=settings.environment)
     await init_db()
-    yield
-    logger.info("Shutting down AFM API")
-    await payment_service.close()
+    reconciliation_stop = asyncio.Event()
+    reconciliation_task = asyncio.create_task(
+        reconciliation_worker(reconciliation_stop, AsyncSessionLocal)
+    )
+    try:
+        yield
+    finally:
+        reconciliation_stop.set()
+        reconciliation_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reconciliation_task
+        logger.info("Shutting down AFM API")
+        await payment_service.close()
     await event_producer.close()
     await rate_limiter.close()
     await engine.dispose()
@@ -1744,6 +1755,7 @@ async def process_kora_webhook_business_event(
             or_(
                 Transaction.idempotency_key == reference,
                 Transaction.psp_transaction_id == reference,
+                Transaction.psp_payment_reference == reference,
             ),
             Transaction.ledger_namespace == "afm_payments",
         )
@@ -1801,9 +1813,11 @@ async def process_kora_webhook_business_event(
         }
     else:
         transaction.status = PaymentStatus.PROCESSING
+        await enqueue_reconciliation(db, transaction, data)
         transaction.txn_metadata = {
             **(transaction.txn_metadata or {}),
-            "reconciliation_status": "pending",
+            "reconciliation_status": "scheduled",
+            "provider_status": status_value,
         }
 
 

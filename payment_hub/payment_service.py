@@ -75,6 +75,7 @@ from common.fx import FX_RATES_TO_USD, convert_usd_bounds
 from payment_hub.models import Transaction, PaymentStatus, PSPType
 from payment_hub.psp_router import psp_router
 from payment_hub.kora_client import KoraClient, KoraClientError
+from payment_hub.reconciliation import enqueue_reconciliation
 
 logger = configure_logging()
 
@@ -366,6 +367,7 @@ class PaymentService:
             # 7. Update DB with PSP result
             async with AsyncSessionLocal() as session:
                 transaction.psp_transaction_id = psp_response.get("psp_transaction_id")
+                transaction.psp_payment_reference = psp_response.get("payment_reference")
                 transaction.psp_response = psp_response
 
                 psp_status = str(psp_response.get("status") or "").lower()
@@ -378,6 +380,8 @@ class PaymentService:
                     transaction.status = PaymentStatus.FAILED
                     transaction.error_message = psp_response.get("error", "PSP processing failed")
 
+                if transaction.status == PaymentStatus.PROCESSING:
+                    await enqueue_reconciliation(session, transaction, psp_response)
                 await session.merge(transaction)
                 await session.commit()
 
