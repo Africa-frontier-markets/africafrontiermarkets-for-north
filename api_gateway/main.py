@@ -44,6 +44,7 @@ from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
 from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balance
 from payment_hub.reconciliation import enqueue_reconciliation, reconciliation_worker
+from payment_hub.support_ai import analyze_incident
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
@@ -1902,6 +1903,24 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             event_type=event_type,
             failure_count=int(failures or 0),
             error=str(exc),
+        )
+        support_decision = analyze_incident(
+            str(exc),
+            {
+                "event_id": event_id,
+                "event_type": event_type,
+                "provider_reference": provider_reference,
+                "failure_count": int(failures or 0),
+            },
+        )
+        logger.error(
+            "Corrective support diagnosis",
+            incident_key=support_decision.incident_key,
+            category=support_decision.category,
+            severity=support_decision.severity,
+            proposed_action=support_decision.proposed_action,
+            auto_action_allowed=support_decision.auto_action_allowed,
+            requires_human_approval=support_decision.requires_human_approval,
         )
         raise HTTPException(status_code=500, detail="Webhook processing failed") from exc
 

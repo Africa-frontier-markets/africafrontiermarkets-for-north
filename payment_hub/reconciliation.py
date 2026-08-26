@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -12,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from config.config import get_settings
 from payment_hub.kora_client import KoraClient, KoraClientError
 from payment_hub.models import KoraPaymentReconciliation, PaymentStatus, Transaction
+from payment_hub.support_ai import analyze_incident
 
 SUCCESS_STATUSES = {"success", "successful", "completed", "settled"}
 FAILURE_STATUSES = {"failed", "cancelled", "canceled", "reversed"}
 PENDING_STATUSES = {"", "pending", "processing", "requires_authorization"}
+logger = logging.getLogger(__name__)
 
 
 def normalize_kora_status(raw: object) -> str:
@@ -184,5 +187,20 @@ async def reconciliation_worker(
                 await asyncio.wait_for(stop_event.wait(), timeout=15)
         except asyncio.TimeoutError:
             continue
-        except Exception:
+        except Exception as exc:
+            decision = analyze_incident(
+                str(exc),
+                {"component": "reconciliation_worker", "provider": "kora"},
+            )
+            # The support layer may diagnose and propose a safe action, but it
+            # never mutates payment state or executes a provider operation here.
+            logger.error(
+                "Corrective support diagnosis",
+                extra={
+                    "incident_key": decision.incident_key,
+                    "category": decision.category,
+                    "proposed_action": decision.proposed_action,
+                    "requires_human_approval": decision.requires_human_approval,
+                },
+            )
             await asyncio.sleep(5)
