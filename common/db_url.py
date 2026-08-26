@@ -23,7 +23,19 @@ def normalize_database_url(raw: str) -> tuple[str, bool]:
     Accepts postgres://, postgresql://, or postgresql+asyncpg:// as input.
     """
     parts = urlsplit(raw)
-    scheme = parts.scheme
+    scheme = parts.scheme.lower()
+
+    if scheme in ("mysql", "mysql+pymysql", "mysql+aiomysql"):
+        raise ValueError(
+            "AFM requires PostgreSQL for DATABASE_URL; "
+            "a MySQL URL belongs to another project context."
+        )
+
+    if scheme not in ("postgres", "postgresql", "postgresql+asyncpg"):
+        raise ValueError(
+            "AFM DATABASE_URL must use postgres://, postgresql://, "
+            "or postgresql+asyncpg://."
+        )
 
     if scheme in ("postgres", "postgresql"):
         scheme = "postgresql+asyncpg"
