@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Column, String, DateTime, Numeric, Enum as SQLEnum, ForeignKey, JSON, Index, Text
+from sqlalchemy import Column, String, DateTime, Numeric, Integer, Enum as SQLEnum, ForeignKey, JSON, Index, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from config.database import Base
@@ -39,6 +39,7 @@ class Transaction(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     psp = Column(SQLEnum(PSPType), nullable=False)
     psp_transaction_id = Column(String(100))
+    psp_payment_reference = Column(String(128), index=True)
     psp_response = Column(JSON, default=dict)  # Raw PSP response stored
     amount = Column(Numeric(19, 8), nullable=False)
     currency = Column(String(3), nullable=False)
@@ -168,6 +169,33 @@ class KoraWebhookEvent(Base):
     received_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     processed_at = Column(DateTime(timezone=True))
     error_message = Column(String(255))
+
+
+class KoraPaymentReconciliation(Base):
+    """Durable status-reconciliation task for a Kora payment."""
+
+    __tablename__ = "kora_payment_reconciliations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    payment_reference = Column(String(128), nullable=False, index=True)
+    transaction_reference = Column(String(128))
+    provider_status = Column(String(40), nullable=False, default="processing")
+    state = Column(String(24), nullable=False, default="scheduled")
+    attempt_count = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    last_checked_at = Column(DateTime(timezone=True))
+    last_error = Column(Text)
+    locked_at = Column(DateTime(timezone=True))
+    locked_by = Column(String(128))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_kora_reconciliation_due", "state", "next_attempt_at"),
+        Index("ix_kora_reconciliation_payment_reference", "payment_reference"),
+    )
 
 
 class KoraRefund(Base):
