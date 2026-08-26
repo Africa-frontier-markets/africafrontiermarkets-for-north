@@ -50,6 +50,12 @@ Injecter des champs nommés `api_key`, `authorization`, `pin`, `otp` et `token` 
 
 Lancer deux workers sur le même jeu de tâches puis interrompre l’un pendant le traitement. Vérifier que `FOR UPDATE SKIP LOCKED` empêche le double traitement et que la tâche verrouillée est récupérable après le délai prévu.
 
+### UAT-09 — Enrichissement LLM externe
+
+Activer le LLM uniquement sur staging avec `SUPPORT_AI_LLM_BASE_URL`, `SUPPORT_AI_LLM_MODEL` et la clé ajoutée dans le coffre Northflank. Générer une erreur transitoire contrôlée et vérifier que le LLM reçoit uniquement le contexte désinfecté, retourne le JSON attendu `note`/`confidence`, et ne peut pas modifier `proposed_action`. Vérifier qu’un fournisseur indisponible est géré sans bloquer le webhook ou le worker, que les secrets ne sont jamais journalisés et que toute action financière reste soumise aux règles déterministes AFM.
+
+Le scénario est accepté si l’enrichissement ajoute uniquement une note courte, si l’action autorisée reste celle du moteur déterministe et si un timeout LLM n’interrompt pas le traitement.
+
 ## Critères d’acceptation
 
 La recette est acceptée si tous les scénarios UAT-01 à UAT-08 passent, si aucun secret n’apparaît dans les logs, si aucune transaction n’est remboursée depuis un état `processing` ou ambigu, et si chaque mouvement financier final est idempotent.

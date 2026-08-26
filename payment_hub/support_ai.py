@@ -10,9 +10,13 @@ allow-listed and require an explicit operational approval.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Mapping
+
+import httpx
 
 
 _SENSITIVE_KEY_RE = re.compile(r"(secret|token|password|pin|otp|authorization|cookie|api[_-]?key)", re.I)
@@ -28,6 +32,7 @@ class SupportDecision:
     auto_action_allowed: bool
     requires_human_approval: bool
     sanitized_context: dict[str, Any]
+    llm_note: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -121,3 +126,56 @@ def analyze_incident(error: str, context: Mapping[str, Any] | None = None) -> Su
         requires_human_approval=True,
         sanitized_context=sanitized,
     )
+
+
+async def enrich_with_external_llm(decision: SupportDecision) -> SupportDecision:
+    """Optionally enrich a diagnosis; never accepts an LLM action or secret."""
+    base_url = os.getenv("SUPPORT_AI_LLM_BASE_URL", "").rstrip("/")
+    api_key = os.getenv("SUPPORT_AI_LLM_API_KEY", "")
+    model = os.getenv("SUPPORT_AI_LLM_MODEL", "")
+    if not base_url or not api_key or not model:
+        return decision
+
+    prompt = {
+        "incident": decision.category,
+        "severity": decision.severity,
+        "deterministic_diagnosis": decision.diagnosis,
+        "context": decision.sanitized_context,
+        "instruction": "Return JSON with only a concise note and confidence 0..1. Never propose an action, secret, SQL, PIN, OTP, payout, refund, or code mutation.",
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are an AFM support analyst. You may enrich a diagnosis only; deterministic policy remains authoritative."},
+            {"role": "user", "content": json.dumps(prompt, separators=(",", ":"))},
+        ],
+        "temperature": 0,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "support_note",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "note": {"type": "string", "maxLength": 600},
+                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "required": ["note", "confidence"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"]
+            note = json.loads(content).get("note", "").strip()
+    except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return decision
+    if not note:
+        return decision
+    return replace(decision, llm_note=note[:600])

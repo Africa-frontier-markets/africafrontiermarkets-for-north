@@ -44,7 +44,7 @@ from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
 from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balance
 from payment_hub.reconciliation import enqueue_reconciliation, reconciliation_worker
-from payment_hub.support_ai import analyze_incident
+from payment_hub.support_ai import analyze_incident, enrich_with_external_llm
 from payment_hub.models import (
     BrokerAccountLink,
     KoraWebhookEvent,
@@ -1904,14 +1904,16 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             failure_count=int(failures or 0),
             error=str(exc),
         )
-        support_decision = analyze_incident(
-            str(exc),
-            {
-                "event_id": event_id,
-                "event_type": event_type,
-                "provider_reference": provider_reference,
-                "failure_count": int(failures or 0),
-            },
+        support_decision = await enrich_with_external_llm(
+            analyze_incident(
+                str(exc),
+                {
+                    "event_id": event_id,
+                    "event_type": event_type,
+                    "provider_reference": provider_reference,
+                    "failure_count": int(failures or 0),
+                },
+            )
         )
         logger.error(
             "Corrective support diagnosis",
