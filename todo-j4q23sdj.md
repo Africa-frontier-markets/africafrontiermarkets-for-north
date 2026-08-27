@@ -154,3 +154,9 @@
 - [ ] Créer un checkpoint backend avant publication
 - [ ] Déployer la version AFM mise à jour sur l’environnement de production
 - [ ] Vérifier les endpoints publics et privés après déploiement
+
+- [ ] Fusionner les changements distants LLM avec l’onboarding sans SMS
+- [ ] Résoudre les suppressions/conflits des fichiers onboarding et WhatsApp sans perte
+- [ ] Rejouer la suite complète après fusion
+- [ ] Publier la branche intégrée sans force push
+- [ ] Vérifier la révision déployée et les endpoints d’onboarding

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from config.config import get_settings
 from payment_hub.kora_client import KoraClient, KoraClientError
 from payment_hub.models import KoraPaymentReconciliation, PaymentStatus, Transaction
-from payment_hub.support_ai import analyze_incident
+from payment_hub.support_ai import analyze_incident, enrich_with_external_llm
 
 SUCCESS_STATUSES = {"success", "successful", "completed", "settled"}
 FAILURE_STATUSES = {"failed", "cancelled", "canceled", "reversed"}
@@ -208,9 +208,11 @@ async def reconciliation_worker(
         except asyncio.TimeoutError:
             continue
         except Exception as exc:
-            decision = analyze_incident(
-                str(exc),
-                {"component": "reconciliation_worker", "provider": "kora"},
+            decision = await enrich_with_external_llm(
+                analyze_incident(
+                    str(exc),
+                    {"component": "reconciliation_worker", "provider": "kora"},
+                )
             )
             # The support layer may diagnose and propose a safe action, but it
             # never mutates payment state or executes a provider operation here.
