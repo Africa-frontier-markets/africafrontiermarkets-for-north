@@ -334,6 +334,7 @@ class PaymentService:
                     fee_currency=currency,  # Fee in same currency as transaction
                     net_amount=net_amount,
                     status=PaymentStatus.PENDING,
+                    mobile_money_phone=phone_number if method == "mobile_money" else None,
                     txn_metadata=metadata or {},
                 )
                 session.add(transaction)
@@ -369,6 +370,10 @@ class PaymentService:
                 transaction.psp_transaction_id = psp_response.get("psp_transaction_id")
                 transaction.psp_payment_reference = psp_response.get("payment_reference")
                 transaction.psp_response = psp_response
+                transaction.mobile_money_phone = phone_number if method == "mobile_money" else None
+                transaction.mobile_money_provider_reference = str(
+                    psp_response.get("payment_reference") or psp_response.get("transaction_reference") or ""
+                ) or None
 
                 psp_status = str(psp_response.get("status") or "").lower()
                 if psp_response.get("success"):

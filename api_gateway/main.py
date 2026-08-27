@@ -55,6 +55,7 @@ from payment_hub.models import (
     VirtualAccount,
     VirtualLedgerEntry,
     VirtualPosition,
+    User,
 )
 from api_gateway.auth import router as auth_router
 from api_gateway.kora_alerts import notify_kora_failure
@@ -113,6 +114,21 @@ app = FastAPI(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(auth_router)
+
+
+async def require_verified_user(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> uuid.UUID:
+    """Production transfer gate: verified account identity; provider checks each Mobile Money transaction."""
+    if not get_settings().is_production:
+        return user_id
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or user.is_active != "1":
+        raise HTTPException(status_code=401, detail="User account is unavailable")
+    if not user.email_verified_at:
+        raise HTTPException(status_code=403, detail="Email verification is required before transfers")
+    return user_id
 
 settings = get_settings()
 app.add_middleware(
@@ -230,6 +246,14 @@ async def root():
         "version": "prod-1.0.0",
         "status": "operational",
     }
+
+
+@app.get("/onboarding")
+async def onboarding_page():
+    onboarding_path = PUBLIC_DIR / "onboarding.html"
+    if onboarding_path.exists():
+        return FileResponse(onboarding_path)
+    raise HTTPException(status_code=404, detail="Onboarding page not found")
 
 
 @app.get("/contact/loic-mpanjo")
@@ -1368,7 +1392,7 @@ async def get_dashboard_transaction(
 async def create_payment(
     request: Request,
     payment: PaymentRequest,
-    user_id: uuid.UUID = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(require_verified_user),
 ):
     idempotency_key = request.headers.get("X-Idempotency-Key")
     transaction = await payment_service.process_payment(
@@ -1411,7 +1435,7 @@ async def create_payment(
 async def create_kora_payout(
     payout: PayoutRequest,
     request: Request,
-    user_id: uuid.UUID = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(require_verified_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Validate or execute a Kora payout.
@@ -1439,6 +1463,7 @@ async def create_kora_payout(
         fee_currency=payout.currency.upper(),
         status=PaymentStatus.PROCESSING,
         virtual_account_id=account.id,
+        mobile_money_phone=payout.mobile_number,
         ledger_namespace="afm_payments",
         txn_metadata={
             "operation": "payout",
@@ -1488,6 +1513,7 @@ async def create_kora_payout(
         await db.commit()
         raise HTTPException(status_code=502, detail="Kora payout is temporarily unavailable") from exc
     transaction.psp_transaction_id = str(result.get("reference") or result.get("transaction_reference") or reference)
+    transaction.mobile_money_provider_reference = str(result.get("reference") or result.get("transaction_reference") or "") or None
     transaction.psp_response = result
     transaction.status = PaymentStatus.PROCESSING
     await db.commit()

@@ -21,6 +21,24 @@ PENDING_STATUSES = {"", "pending", "processing", "requires_authorization"}
 logger = logging.getLogger(__name__)
 
 
+def _normalized_phone(value: object) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _provider_phone_matches(transaction: Transaction, response: object) -> bool:
+    expected = _normalized_phone(transaction.mobile_money_phone)
+    if not expected or not isinstance(response, dict):
+        return False
+    candidates: list[object] = []
+    for key in ("phone_number", "mobile_number", "phone", "number"):
+        if key in response:
+            candidates.append(response[key])
+    mobile_money = response.get("mobile_money")
+    if isinstance(mobile_money, dict):
+        candidates.extend(mobile_money.get(key) for key in ("number", "mobile_number", "phone_number"))
+    return any(_normalized_phone(candidate) == expected for candidate in candidates if candidate)
+
+
 def normalize_kora_status(raw: object) -> str:
     value = str(raw or "").strip().lower()
     if value in SUCCESS_STATUSES:
@@ -151,6 +169,8 @@ async def reconcile_due_once(
                 "reconciliation": response or {"error": error},
                 "provider_status": raw_status or task.provider_status,
             }
+            if _provider_phone_matches(transaction, response):
+                transaction.mobile_money_owner_verified_at = now
             if normalized == "completed" and transaction.status not in {
                 PaymentStatus.COMPLETED,
                 PaymentStatus.REFUNDED,
