@@ -26,6 +26,7 @@ def test_otp_schema_requires_six_digits():
         country="CM",
         date_of_birth="1990-01-01",
         identity_consent=True,
+        terms_accepted=True,
     )
     assert request.code == "123456"
 

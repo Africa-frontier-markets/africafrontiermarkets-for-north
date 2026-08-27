@@ -91,6 +91,9 @@ class User(Base):
     email_verified_at = Column(DateTime(timezone=True))
     phone_verified_at = Column(DateTime(timezone=True))
     identity_consent_at = Column(DateTime(timezone=True))
+    terms_accepted_at = Column(DateTime(timezone=True))
+    terms_version = Column(String(32))
+    aml_policy_version = Column(String(32))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

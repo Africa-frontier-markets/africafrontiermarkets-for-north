@@ -149,14 +149,48 @@
 - [ ] Tester l’envoi OTP WhatsApp en dry-run puis avec confirmation contrôlée
 - [ ] Vérifier la séparation du numéro WhatsApp OTP et du numéro Mobile Money
 
-- [ ] Retirer le SMS AFM du parcours principal et utiliser la confirmation opérateur Mobile Money
+- [x] Retirer le SMS AFM du parcours principal et utiliser la confirmation opérateur Mobile Money
 - [ ] Valider les migrations 010, 011 et 012 avant déploiement
 - [ ] Créer un checkpoint backend avant publication
 - [ ] Déployer la version AFM mise à jour sur l’environnement de production
 - [ ] Vérifier les endpoints publics et privés après déploiement
 
-- [ ] Fusionner les changements distants LLM avec l’onboarding sans SMS
-- [ ] Résoudre les suppressions/conflits des fichiers onboarding et WhatsApp sans perte
-- [ ] Rejouer la suite complète après fusion
-- [ ] Publier la branche intégrée sans force push
-- [ ] Vérifier la révision déployée et les endpoints d’onboarding
+- [x] Fusionner les changements distants LLM avec l’onboarding sans SMS
+- [x] Résoudre les suppressions/conflits des fichiers onboarding et WhatsApp sans perte
+- [x] Rejouer la suite complète après fusion
+- [x] Publier la branche intégrée sans force push
+- [x] Vérifier la révision déployée et les endpoints d’onboarding
+
+- [ ] Formaliser que 500 000 XAF mensuels maintient le KYC 1 lorsque le seuil journalier de 50 000 XAF est dépassé
+- [ ] Transformer le seuil journalier de 50 000 XAF en alerte/suivi renforcé plutôt qu’en blocage automatique
+- [ ] Vérifier que le plafond mensuel de 500 000 XAF reste bloquant pour le maintien du KYC 1
+- [ ] Ajouter les tests de cumul journalier et mensuel selon cette règle métier
+- [ ] Faire valider l’écart avec le libellé actuel du manuel AML avant ouverture large
+
+- [x] Comparer le plafond KYC 1 AFM de 500 000 XAF/mois aux pratiques publiques de plateformes comparables
+- [x] Distinguer les plafonds KYC, transactionnels, journaliers, mensuels et propres à chaque opérateur
+- [x] Documenter les sources publiques et les limites de comparabilité
+
+- [ ] Évaluer le relèvement du plafond KYC 1 mensuel à 10 000 000 XAF
+- [ ] Vérifier les limites journalières publiques des opérateurs par corridor
+- [ ] Vérifier les limites et conditions Kora applicables par corridor
+- [ ] Définir les contrôles AML renforcés nécessaires sous 10 000 000 XAF mensuels
+- [ ] Faire valider la nouvelle matrice avant modification du code et du manuel AML
+
+- [ ] Préparer sans appliquer la matrice KYC 1 jusqu’à 10 000 000 XAF mensuels
+- [ ] Documenter les limites Kora par transaction et les limites opérateur par jour
+- [ ] Définir les escalades AML entre 500 000 et 10 000 000 XAF
+- [ ] Soumettre la matrice à validation CCO avant toute modification du code ou du manuel
+
+- [x] Réviser le manuel AML en version 2.1 avec KYC 1 interne jusqu’à 10 000 000 XAF/mois
+- [x] Ajouter les plafonds opérateur/Kora, les limites par corridor et les escalades AML dans le manuel
+- [x] Publier une version web lisible du manuel avant l’acceptation des conditions générales
+- [x] Ajouter une case et un horodatage d’acceptation des conditions générales avec version du manuel
+- [x] Mettre à jour la limite KYC 1 dans les contrôles AFM sans dépasser les limites partenaires
+- [x] Tester l’affichage public, l’acceptation versionnée et les contrôles de cumul mensuel
+
+- [ ] Vérifier la cible Neon et sa révision Alembic avant migration
+- [ ] Exécuter Alembic 013 sur Neon production sans downgrade ni suppression métier
+- [ ] Vérifier les colonnes légales et la cohérence post-migration
+- [ ] Préparer la révision de déploiement Northflank avec les variables de politique
+- [ ] Vérifier le service Northflank après redéploiement

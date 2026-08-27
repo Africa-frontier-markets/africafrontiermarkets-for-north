@@ -1,13 +1,13 @@
 """Separate WhatsApp OTP identity from Mobile Money routing identity.
 
-Revision ID: 012_separate_whatsapp_mobile_money
+Revision ID: 012_sep_whatsapp_momo
 Revises: 011_remove_document_kyc
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "012_separate_whatsapp_mobile_money"
+revision = "012_sep_whatsapp_momo"
 down_revision = "011_remove_document_kyc"
 branch_labels = None
 depends_on = None
