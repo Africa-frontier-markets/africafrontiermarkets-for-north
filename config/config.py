@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     kora_webhook_alert_threshold: int = Field(default=3, ge=1, le=20)
     fincra_webhook_secret: str | None = None
 
+    # Published legal/compliance documents and internal KYC1 policy.
+    terms_version: str = "2026-08-27"
+    aml_policy_version: str = "2.1"
+    kyc1_monthly_limit_xaf: int = Field(default=10_000_000, ge=0)
+
     # User onboarding / email OTP
     smtp_host: str | None = None
     smtp_port: int = Field(default=587, ge=1, le=65535)

@@ -53,6 +53,7 @@ class RegisterRequest(BaseModel):
 class OtpRequest(BaseModel):
     email: EmailStr
     identity_consent: bool = Field(..., description="Consent to share the minimum identity attributes with AFM")
+    terms_accepted: bool = Field(..., description="Acceptance of the current AFM terms and AML policy")
 
 
 class OtpVerifyRequest(BaseModel):
@@ -64,6 +65,7 @@ class OtpVerifyRequest(BaseModel):
     country: str = Field(..., min_length=2, max_length=2)
     date_of_birth: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     identity_consent: bool = Field(..., description="Consent to share the minimum identity attributes with AFM")
+    terms_accepted: bool = Field(..., description="Acceptance of the current AFM terms and AML policy")
 
 
 class PhoneOtpRequest(BaseModel):
@@ -111,6 +113,7 @@ class MobileOAuthExchangeRequest(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     date_of_birth: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     identity_consent: bool = False
+    terms_accepted: bool = False
 
 
 def is_valid_mobile_exchange_secret(presented: str | None, configured: str | None) -> bool:
@@ -228,6 +231,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def request_signup_otp(payload: OtpRequest, db: AsyncSession = Depends(get_db)):
     if not payload.identity_consent:
         raise HTTPException(status_code=400, detail="Identity sharing consent is required")
+    if not payload.terms_accepted:
+        raise HTTPException(status_code=400, detail="Acceptance of the terms and AML policy is required")
     email = str(payload.email).strip().lower()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
     recent = await db.execute(
@@ -288,6 +293,9 @@ async def verify_signup_otp(payload: OtpVerifyRequest, db: AsyncSession = Depend
     if not payload.identity_consent:
         await db.commit()
         raise HTTPException(status_code=400, detail="Identity sharing consent is required")
+    if not payload.terms_accepted:
+        await db.commit()
+        raise HTTPException(status_code=400, detail="Acceptance of the terms and AML policy is required")
     challenge.consumed_at = now
     user_result = await db.execute(select(User).where(User.email == email))
     user = user_result.scalar_one_or_none()
@@ -305,6 +313,9 @@ async def verify_signup_otp(payload: OtpVerifyRequest, db: AsyncSession = Depend
             date_of_birth=payload.date_of_birth,
             email_verified_at=now,
             identity_consent_at=now,
+            terms_accepted_at=now,
+            terms_version=get_settings().terms_version,
+            aml_policy_version=get_settings().aml_policy_version,
             is_active="1",
             kyc_status="pending",
         )
@@ -320,6 +331,9 @@ async def verify_signup_otp(payload: OtpVerifyRequest, db: AsyncSession = Depend
         user.date_of_birth = payload.date_of_birth
         user.email_verified_at = now
         user.identity_consent_at = now
+        user.terms_accepted_at = now
+        user.terms_version = get_settings().terms_version
+        user.aml_policy_version = get_settings().aml_policy_version
         user.kyc_status = "pending"
     await db.commit()
     await db.refresh(user)
@@ -486,6 +500,9 @@ async def exchange_mobile_oauth(
                 date_of_birth=payload.date_of_birth,
                 email_verified_at=datetime.now(timezone.utc),
                 identity_consent_at=datetime.now(timezone.utc) if payload.identity_consent else None,
+                terms_accepted_at=datetime.now(timezone.utc) if payload.terms_accepted else None,
+                terms_version=get_settings().terms_version if payload.terms_accepted else None,
+                aml_policy_version=get_settings().aml_policy_version if payload.terms_accepted else None,
                 is_active="1",
             )
             db.add(user)
@@ -498,6 +515,10 @@ async def exchange_mobile_oauth(
             user.email_verified_at = user.email_verified_at or datetime.now(timezone.utc)
             if payload.identity_consent:
                 user.identity_consent_at = datetime.now(timezone.utc)
+            if payload.terms_accepted:
+                user.terms_accepted_at = datetime.now(timezone.utc)
+                user.terms_version = get_settings().terms_version
+                user.aml_policy_version = get_settings().aml_policy_version
         await db.commit()
         await db.refresh(user)
 

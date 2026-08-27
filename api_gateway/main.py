@@ -128,7 +128,38 @@ async def require_verified_user(
         raise HTTPException(status_code=401, detail="User account is unavailable")
     if not user.email_verified_at:
         raise HTTPException(status_code=403, detail="Email verification is required before transfers")
+    settings = get_settings()
+    if not user.terms_accepted_at or user.terms_version != settings.terms_version or user.aml_policy_version != settings.aml_policy_version:
+        raise HTTPException(status_code=403, detail="Acceptance of the current terms and AML policy is required before transfers")
     return user_id
+
+
+async def enforce_kyc1_monthly_limit(*, user_id: uuid.UUID, amount: Decimal, currency: str, db: AsyncSession) -> None:
+    """Apply the internal AFM KYC1 monthly cap to XAF/XOF payment flows.
+
+    The cap is an AFM policy control, not a replacement for operator/Kora limits.
+    Non-CFA corridors are handled by the higher-tier corridor policy.
+    """
+    if not get_settings().is_production:
+        return
+    normalized_currency = currency.upper()
+    if normalized_currency not in {"XAF", "XOF"}:
+        raise HTTPException(status_code=403, detail="This corridor requires enhanced verification")
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    excluded = [PaymentStatus.FAILED, PaymentStatus.REFUNDED]
+    total = (await db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            Transaction.user_id == user_id,
+            Transaction.ledger_namespace == "afm_payments",
+            Transaction.currency.in_(["XAF", "XOF"]),
+            Transaction.created_at >= month_start,
+            Transaction.status.notin_(excluded),
+        )
+    )).scalar_one()
+    proposed_total = Decimal(str(total or 0)) + amount
+    limit = Decimal(str(get_settings().kyc1_monthly_limit_xaf))
+    if proposed_total > limit:
+        raise HTTPException(status_code=403, detail="Monthly KYC1 limit exceeded; enhanced verification is required")
 
 settings = get_settings()
 app.add_middleware(
@@ -254,6 +285,33 @@ async def onboarding_page():
     if onboarding_path.exists():
         return FileResponse(onboarding_path)
     raise HTTPException(status_code=404, detail="Onboarding page not found")
+
+
+@app.get("/terms")
+async def terms_page():
+    terms_path = PUBLIC_DIR / "terms.html"
+    if terms_path.exists():
+        return FileResponse(terms_path)
+    raise HTTPException(status_code=404, detail="Terms page not found")
+
+
+@app.get("/aml-policy")
+async def aml_policy_page():
+    aml_path = PUBLIC_DIR / "aml-policy.html"
+    if aml_path.exists():
+        return FileResponse(aml_path)
+    raise HTTPException(status_code=404, detail="AML policy page not found")
+
+
+@app.get("/legal/versions")
+async def legal_versions():
+    settings = get_settings()
+    return {
+        "terms_version": settings.terms_version,
+        "aml_policy_version": settings.aml_policy_version,
+        "terms_url": "/terms",
+        "aml_policy_url": "/aml-policy",
+    }
 
 
 @app.get("/contact/loic-mpanjo")
@@ -1393,8 +1451,10 @@ async def create_payment(
     request: Request,
     payment: PaymentRequest,
     user_id: uuid.UUID = Depends(require_verified_user),
+    db: AsyncSession = Depends(get_db),
 ):
     idempotency_key = request.headers.get("X-Idempotency-Key")
+    await enforce_kyc1_monthly_limit(user_id=user_id, amount=payment.amount, currency=payment.currency, db=db)
     transaction = await payment_service.process_payment(
         user_id=user_id,
         amount=payment.amount,
@@ -1450,6 +1510,8 @@ async def create_kora_payout(
         raise HTTPException(status_code=422, detail="A Mobile Money destination or bank account is required")
     if payout.execute and request.headers.get("X-AFM-Payout-Confirmation") != "CONFIRM":
         raise HTTPException(status_code=428, detail="Explicit payout confirmation is required")
+    if payout.execute:
+        await enforce_kyc1_monthly_limit(user_id=user_id, amount=payout.amount, currency=payout.currency, db=db)
     reference = f"afm-payout-{uuid.uuid4().hex}"
     destination_type = "mobile_money" if payout.mobile_money_operator else "bank_account"
     account = await get_or_create_virtual_account(user_id, db)
