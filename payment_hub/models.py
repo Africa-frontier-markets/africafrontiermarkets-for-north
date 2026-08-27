@@ -53,6 +53,9 @@ class Transaction(Base):
     virtual_account_id = Column(UUID(as_uuid=True), ForeignKey("virtual_accounts.id"), nullable=True, index=True)
     corridor = Column(String(64))
     beneficiary_currency = Column(String(3))
+    mobile_money_phone = Column(String(50))
+    mobile_money_provider_reference = Column(String(128))
+    mobile_money_owner_verified_at = Column(DateTime(timezone=True))
     total_fee_amount = Column(Numeric(19, 8), default=Decimal("0"))
     error_message = Column(Text)
     webhook_received_at = Column(DateTime(timezone=True))
@@ -75,11 +78,40 @@ class User(Base):
     oauth_subject = Column(String(128), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255))
     full_name = Column(String(255))
-    phone = Column(String(50))
+    # WhatsApp OTP identity and Mobile Money destination are intentionally separate.
+    phone = Column(String(50))  # legacy alias; do not use for financial routing
+    whatsapp_phone = Column(String(50))
+    mobile_money_phone = Column(String(50))
     country = Column(String(2))
     is_active = Column(String(1), default="1")
+    # Lightweight identity state; no identity document is stored by AFM.
     kyc_status = Column(String(20), default="pending")
+    date_of_birth = Column(String(10))
+    mobile_money_owner_verified_at = Column(DateTime(timezone=True))
+    email_verified_at = Column(DateTime(timezone=True))
+    phone_verified_at = Column(DateTime(timezone=True))
+    identity_consent_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UserOtpChallenge(Base):
+    """One-time email verification challenge; never stores the clear OTP."""
+
+    __tablename__ = "user_otp_challenges"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    email = Column(String(255), nullable=False, index=True)
+    phone = Column(String(50))
+    purpose = Column(String(32), nullable=False, default="signup")
+    code_digest = Column(String(64), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    consumed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_user_otp_email_purpose_created", "email", "purpose", "created_at"),
+    )
 
 
 class BrokerAccountLink(Base):

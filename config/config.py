@@ -96,6 +96,25 @@ class Settings(BaseSettings):
     kora_webhook_alert_threshold: int = Field(default=3, ge=1, le=20)
     fincra_webhook_secret: str | None = None
 
+    # User onboarding / email OTP
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+    sms_api_url: str | None = None
+    sms_api_token: str | None = None
+    sms_sender: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_api_version: str = "v23.0"
+    whatsapp_otp_template_name: str = "afm_authentication_code"
+    whatsapp_otp_template_language: str = "fr"
+    otp_expire_minutes: int = Field(default=10, ge=3, le=20)
+    otp_max_attempts: int = Field(default=5, ge=1, le=10)
+    otp_expose_dev_code: bool = False
+
     # Environment
     environment: Literal["development", "staging", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
