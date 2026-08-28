@@ -192,6 +192,8 @@ async def _send_sms(to_phone: str, code: str) -> None:
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    if get_settings().is_production:
+        raise HTTPException(status_code=410, detail="Password registration is unavailable; use email OTP onboarding")
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise ConflictError("An account with this email already exists")
@@ -459,7 +461,7 @@ async def submit_kyc(
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
-async def refresh(payload: RefreshRequest):
+async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
     claims = decode_token(payload.refresh_token)
     if claims.get("type") != "refresh":
         raise ValidationError("Provided token is not a refresh token")
@@ -467,8 +469,15 @@ async def refresh(payload: RefreshRequest):
     sub = claims.get("sub")
     if not sub:
         raise AuthenticationError("Token missing subject claim")
+    try:
+        user_id = uuid.UUID(str(sub))
+    except ValueError as exc:
+        raise AuthenticationError("Token subject is not a valid user id") from exc
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or user.is_active != "1":
+        raise AuthenticationError("Account is unavailable")
 
-    return AccessTokenResponse(access_token=create_access_token({"sub": sub}))
+    return AccessTokenResponse(access_token=create_access_token({"sub": str(user_id)}))
 
 
 @router.post("/oauth/mobile/exchange", response_model=AccessTokenResponse)

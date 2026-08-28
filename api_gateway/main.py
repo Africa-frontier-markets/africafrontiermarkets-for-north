@@ -1113,12 +1113,14 @@ async def get_wallet_balance(
         raise HTTPException(status_code=502, detail=f"Unable to load broker balance: {exc}")
     return {"user_id": str(user_id), "account_id": link.alpaca_account_id, "balances": account}
 
-if get_settings().is_development:
-    @app.post("/dev/token")
-    async def issue_dev_token():
-        demo_user_id = str(uuid.uuid4())
-        token = create_access_token({"sub": demo_user_id})
-        return {"access_token": token, "token_type": "bearer", "user_id": demo_user_id}
+@app.post("/dev/token")
+async def issue_dev_token():
+    """Issue a demo token only when the runtime environment is development."""
+    if not get_settings().is_development:
+        raise HTTPException(status_code=404, detail="Development token endpoint is unavailable")
+    demo_user_id = str(uuid.uuid4())
+    token = create_access_token({"sub": demo_user_id})
+    return {"access_token": token, "token_type": "bearer", "user_id": demo_user_id}
 
 class PaymentRequest(BaseModel):
     amount: Decimal = Field(..., gt=0)
@@ -1319,6 +1321,8 @@ async def simulate_payment(
     This route never calls a PSP, never moves money and never changes the cash balance.
     It only creates an AFM-scoped transaction record and a zero-value ledger journal entry.
     """
+    if get_settings().is_production:
+        raise HTTPException(status_code=404, detail="Simulation is unavailable in production")
     source_currency = payment.source_currency.upper()
     beneficiary_currency = payment.beneficiary_currency.upper()
     total_fees = (

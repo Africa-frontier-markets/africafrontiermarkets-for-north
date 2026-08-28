@@ -18,7 +18,7 @@ from event_bus.redis_producer import event_producer
 settings = get_settings()
 
 
-class PaymentService:
+class _LegacyPaymentLockService:
     SUPPORTED_CURRENCIES = {
         "XOF", "XAF", "NGN", "KES", "GHS", "ZAR",
         "USD", "EUR", "GBP", "CAD", "AUD",
@@ -249,7 +249,7 @@ class PaymentService:
                 amount=amount,
                 currency=currency,
                 status=PaymentStatus.PENDING,
-                metadata=metadata or {},
+                txn_metadata=metadata or {},
             )
 
             event = BaseEvent(
