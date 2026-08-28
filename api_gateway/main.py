@@ -2018,6 +2018,35 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         )
         raise HTTPException(status_code=500, detail="Webhook processing failed") from exc
 
+async def _visa_callback(request: Request, callback_name: str) -> dict[str, str]:
+    """Acknowledge Visa sandbox callbacks without triggering financial operations."""
+    payload = await request.body()
+    if len(payload) > 1_048_576:
+        raise HTTPException(status_code=413, detail="Visa callback payload too large")
+    if payload:
+        try:
+            body = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Malformed Visa callback payload") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Visa callback payload must be an object")
+        event_name = str(body.get("event") or body.get("type") or "unknown")[:80]
+    else:
+        event_name = "empty"
+    logger.info("Visa callback acknowledged", callback=callback_name, event_type=event_name)
+    return {"status": "received"}
+
+
+@app.post("/webhooks/visa/receive-side")
+async def visa_receive_side_callback(request: Request):
+    return await _visa_callback(request, "receive_side")
+
+
+@app.post("/webhooks/visa/issuer")
+async def visa_issuer_callback(request: Request):
+    return await _visa_callback(request, "issuer")
+
+
 @app.post("/webhooks/fincra")
 async def fincra_webhook(request: Request):
     payload = await request.body()

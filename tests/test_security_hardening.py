@@ -85,3 +85,52 @@ async def test_dev_token_is_unavailable_outside_development(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await main.issue_dev_token()
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_visa_callbacks_acknowledge_json_without_financial_side_effects():
+    from api_gateway.main import visa_receive_side_callback, visa_issuer_callback
+    from starlette.requests import Request
+
+    async def make_request(payload: bytes):
+        sent = False
+
+        async def receive():
+            nonlocal sent
+            if sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            sent = True
+            return {"type": "http.request", "body": payload, "more_body": False}
+
+        scope = {"type": "http", "method": "POST", "path": "/webhooks/visa/receive-side", "headers": []}
+        return Request(scope, receive)
+
+    assert (await visa_receive_side_callback(await make_request(b'{"event":"ping"}'))) == {"status": "received"}
+    assert (await visa_issuer_callback(await make_request(b'{"type":"ping"}'))) == {"status": "received"}
+
+
+@pytest.mark.asyncio
+async def test_visa_callback_rejects_malformed_or_oversized_payload():
+    from api_gateway.main import visa_receive_side_callback
+    from starlette.requests import Request
+
+    async def make_request(payload: bytes):
+        sent = False
+
+        async def receive():
+            nonlocal sent
+            if sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            sent = True
+            return {"type": "http.request", "body": payload, "more_body": False}
+
+        scope = {"type": "http", "method": "POST", "path": "/webhooks/visa/receive-side", "headers": []}
+        return Request(scope, receive)
+
+    with pytest.raises(HTTPException) as malformed:
+        await visa_receive_side_callback(await make_request(b"not-json"))
+    assert malformed.value.status_code == 400
+
+    with pytest.raises(HTTPException) as oversized:
+        await visa_receive_side_callback(await make_request(b"x" * (1_048_576 + 1)))
+    assert oversized.value.status_code == 413
