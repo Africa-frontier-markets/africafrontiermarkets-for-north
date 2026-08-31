@@ -59,6 +59,7 @@ from payment_hub.models import (
 )
 from api_gateway.auth import router as auth_router
 from api_gateway.kora_alerts import notify_kora_failure
+from api_gateway.visa_webhooks import VisaWebhookSettings, validate_visa_request
 
 logger = configure_logging()
 _instrument_cache: dict[str, tuple[float, list[dict]]] = {}
@@ -2019,21 +2020,17 @@ async def kora_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Webhook processing failed") from exc
 
 async def _visa_callback(request: Request, callback_name: str) -> dict[str, str]:
-    """Acknowledge Visa sandbox callbacks without triggering financial operations."""
+    """Validate and acknowledge Visa callbacks without triggering financial operations."""
     payload = await request.body()
-    if len(payload) > 1_048_576:
-        raise HTTPException(status_code=413, detail="Visa callback payload too large")
-    if payload:
-        try:
-            body = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail="Malformed Visa callback payload") from exc
-        if not isinstance(body, dict):
-            raise HTTPException(status_code=400, detail="Visa callback payload must be an object")
-        event_name = str(body.get("event") or body.get("type") or "unknown")[:80]
-    else:
-        event_name = "empty"
-    logger.info("Visa callback acknowledged", callback=callback_name, event_type=event_name)
+    body = validate_visa_request(payload, request.headers, VisaWebhookSettings())
+    event_name = str(body.get("event") or body.get("type") or "unknown")[:80]
+    event_id = body.get("eventId") or body.get("event_id") or request.headers.get("x-request-id")
+    logger.info(
+        "Visa callback acknowledged",
+        callback=callback_name,
+        event_type=event_name,
+        event_id=event_id,
+    )
     return {"status": "received"}
 
 

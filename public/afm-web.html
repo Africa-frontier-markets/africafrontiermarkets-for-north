@@ -1,24 +1,801 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="FrontierPay by Africa Frontier Markets — flux multi-devises, API sandbox et infrastructures B2B." />
-  <title>FrontierPay · Africa Frontier Markets | Marchés</title>
-  <link rel="stylesheet" href="/static/afm-web.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AfricaFrontierMarkets — EasyMarkets + FrontierPay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FCFAF8;
+      --surface: #FFFFFF;
+      --tint: #F7EEF0;
+      --deep: #8C5A6B;
+      --deep-2: #734A59;
+      --ink: #464646;
+      --ink-2: #2E2E2E;
+      --soft: #8A8480;
+      --border: #E8E0DC;
+      --rose: #C48A9A;
+      --rose-line: #DDB6C0;
+      --good: #3F8F6F;
+      --good-bg: #E9F5EE;
+      --warn: #B08A2E;
+      --warn-bg: #FBF3DA;
+      --danger: #B85C5C;
+      --danger-bg: #F5E5E5;
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+    .topnav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+    .logo {
+      font-family: 'Lora', serif;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--deep-2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mark {
+      background: var(--deep);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+    }
+    .tabs button {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      color: var(--soft);
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .tabs button:hover { background: var(--tint); color: var(--deep); }
+    .tabs button.active { background: var(--deep); color: white; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .hero {
+      background: linear-gradient(135deg, var(--deep) 0%, var(--deep-2) 100%);
+      color: white;
+      padding: 48px;
+      border-radius: var(--radius);
+      margin-bottom: 32px;
+    }
+    .hero h1 { font-family: 'Lora', serif; font-size: 2.5rem; margin-bottom: 12px; }
+    .hero p { font-size: 1.1rem; opacity: 0.9; max-width: 600px; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 24px;
+    }
+    .stat-card .label { font-size: 0.8rem; color: var(--soft); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-card .value { font-family: 'IBM Plex Mono', monospace; font-size: 1.75rem; font-weight: 600; color: var(--deep); margin-top: 4px; }
+    .stat-card .change { font-size: 0.85rem; margin-top: 4px; }
+    .change.up { color: var(--good); }
+    .change.down { color: var(--danger); }
+    .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin-bottom: 24px; }
+    .section h2 { font-family: 'Lora', serif; font-size: 1.5rem; color: var(--deep-2); margin-bottom: 20px; }
+    .section h3 { font-size: 1.1rem; color: var(--ink-2); margin: 20px 0 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; color: var(--soft); letter-spacing: 0.5px; }
+    tr:hover { background: var(--tint); }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-success { background: var(--good-bg); color: var(--good); }
+    .badge-warning { background: var(--warn-bg); color: var(--warn); }
+    .badge-danger { background: var(--danger-bg); color: var(--danger); }
+    .operator-badges { display:flex; flex-wrap:wrap; gap:6px; }
+    .operator-badge { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border:1px solid var(--border); border-radius:999px; background:var(--surface); font-size:.72rem; font-weight:600; }
+    .operator-logo { width:20px; height:20px; object-fit:contain; border-radius:50%; background:#fff; }
+    .availability-dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+    .availability-dot.available { background:var(--good); }
+    .availability-dot.limited { background:var(--warn); }
+    .availability-dot.unavailable { background:var(--danger); }
+    .filter-row { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin-bottom:20px; }
+    .filter-row label { display:flex; flex-direction:column; gap:5px; font-size:.8rem; color:var(--soft); font-weight:600; }
+    .filter-row select { min-width:210px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--ink-2); font:inherit; }
+    .language-control { margin-left:auto; display:flex; gap:4px; align-items:center; }
+    .language-control button { border:1px solid var(--border); background:var(--surface); color:var(--soft); border-radius:6px; padding:5px 8px; cursor:pointer; font-weight:600; }
+    .language-control button.active { background:var(--deep); color:white; border-color:var(--deep); }
+    .live-note { margin-top:10px; font-size:.8rem; color:var(--soft); }
+    .family-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .family-chip { border:1px solid var(--deep); background:transparent; color:var(--deep); border-radius:999px; padding:7px 12px; cursor:pointer; font-weight:600; }
+    .family-chip.active { background:var(--deep); color:white; }
+    @media (max-width: 768px) { .language-control { margin-left:0; width:100%; } .filter-row select { width:100%; } .filter-row label { flex:1 1 100%; } table { display:block; overflow-x:auto; white-space:nowrap; } }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--deep); color: white; }
+    .btn-primary:hover { background: var(--deep-2); }
+    .btn-outline { background: transparent; border: 1px solid var(--deep); color: var(--deep); }
+    .btn-outline:hover { background: var(--tint); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .card { background: var(--bg); border-radius: var(--radius-sm); padding: 20px; }
+    .card h4 { font-size: 0.9rem; color: var(--soft); margin-bottom: 8px; }
+    .card .big { font-family: 'IBM Plex Mono', monospace; font-size: 1.5rem; font-weight: 600; color: var(--deep-2); }
+    .progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+    .progress-bar .fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .sub-tabs { display: flex; gap: 4px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .sub-tabs button { padding: 6px 14px; border: none; background: transparent; color: var(--soft); font-family: 'Inter', sans-serif; font-weight: 500; font-size: 0.85rem; cursor: pointer; border-radius: 6px; }
+    .sub-tabs button:hover { background: var(--tint); }
+    .sub-tabs button.active { background: var(--deep); color: white; }
+    .trader-card { background: var(--bg); border-radius: var(--radius-sm); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+    .trader-card .header { display: flex; align-items: center; gap: 12px; }
+    .avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--deep); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
+    .trader-card .name { font-weight: 600; }
+    .trader-card .return { font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; color: var(--good); }
+    .trader-card .risk { font-size: 0.8rem; color: var(--soft); }
+    .signal-card { background: var(--bg); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 12px; }
+    .signal-card .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .signal-card .ticker { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 0.85rem; background: var(--tint); padding: 2px 8px; border-radius: 4px; }
+    .signal-card .side-buy { color: var(--good); font-weight: 600; }
+    .signal-card .side-sell { color: var(--danger); font-weight: 600; }
+    footer { text-align: center; padding: 48px 24px; color: var(--soft); font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: 48px; }
+    .hidden { display: none; }
+    @media (max-width: 768px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 1.75rem; }
+      .tabs { flex-wrap: wrap; }
+    }
+  </style>
 </head>
 <body>
-  <header class="topbar"><div class="shell nav"><a href="#markets" class="brand"><span>FP</span> FrontierPay <small>by AFM</small></a><nav><a href="#markets">Marchés</a><a href="#frontierpay-simulator">FrontierPay</a><a href="#api">API</a><a href="/changelog">Changelog</a><a href="#compliance">Compliance</a><a href="/terms">Conditions</a><a href="/aml-policy">Politique AML</a><a class="hero-link" href="/onboarding">Ouvrir un compte</a><button id="language" type="button" aria-label="Switch language">EN</button></nav></div></header>
-  <section class="hero"><div class="shell"><p class="eyebrow" data-copy="eyebrow">FRONTIERPAY · INFRASTRUCTURE AFRICAINE</p><h1 data-copy="title">Des transferts africains conçus pour les utilisateurs et les infrastructures financières.</h1><p class="intro" data-copy="intro">Une couche opérationnelle signée Africa Frontier Markets pour accéder aux corridors disponibles, avec un parcours production vérifié pour les utilisateurs et des intégrations dédiées aux fintechs et PSPs.</p><p class="status"><i></i><span data-copy="status">Marchés consultatifs · Corridors production · Contrôles d’identité requis</span></p><p><a class="hero-link" href="/onboarding">Créer un accès production</a> <a class="hero-link secondary" href="#api">Découvrir l’API B2B</a></p></div></section>
-  <main class="shell main">
-    <section id="markets"><div class="stats"><div><small data-copy="statInstruments">INSTRUMENTS</small><strong id="count">—</strong></div><div><small data-copy="statData">DONNÉES</small><strong data-copy="statDataValue">Indicatives</strong></div><div><small data-copy="statAccess">ACCÈS</small><strong data-copy="statAccessValue">Public</strong></div><div><small data-copy="statOrders">ORDRES</small><strong data-copy="statOrdersValue">Désactivés</strong></div></div>
-      <section class="panel"><div class="toolbar"><label><span>⌕</span><input id="search" autocomplete="off" data-placeholder="search" placeholder="Rechercher un symbole ou un instrument" /></label><button class="filter active" data-filter="all" data-copy="all">Tous</button><button class="filter" data-filter="tradable" data-copy="tradable">Négociables</button><button class="filter" data-filter="equity" data-copy="equities">Actions</button><button class="filter" data-filter="crypto" data-copy="crypto">Crypto</button></div><div class="table-title"><h2 data-copy="marketTable">Tableau de marché</h2><span id="updated" data-copy="updating">Mise à jour des données…</span></div><div class="scroll"><table><thead><tr><th data-copy="instrument">Instrument</th><th data-copy="change">Variation</th><th data-copy="trend">Tendance</th><th data-copy="price">Cours indicatif</th><th data-copy="availability">Disponibilité</th></tr></thead><tbody id="rows"><tr><td colspan="5" data-copy="loading">Chargement des instruments de marché…</td></tr></tbody></table></div></section>
-    </section>
-    <section id="frontierpay-simulator" class="compliance"><header><p class="eyebrow gold">FRONTIERPAY · SIMULATEUR PUBLIC</p><h2>Estimer un flux avant intégration</h2><p>FrontierPay prépare des parcours de paiement multi-devises pour les fintechs, PSPs et équipes corporate. Le simulateur récupère une cotation de corridor côté serveur et présente le coût total et le montant net, sans connexion, sans collecte d’identité et sans mouvement de fonds.</p></header><div class="compliance-grid"><article><h3>Simulation libre</h3><label for="public-sim-amount">Montant source</label><input id="public-sim-amount" type="number" min="100000" step="1000" value="100000" /><label for="public-sim-corridor">Corridor</label><select id="public-sim-corridor"><option value="ci-ghana">Côte d’Ivoire → Ghana</option><option value="ci-nigeria">Côte d’Ivoire → Nigeria</option><option value="benin-nigeria">Bénin → Nigeria</option><option value="cameroon-nigeria">Cameroun → Nigeria</option><option value="cameroon-ivory-coast">Cameroun → Côte d’Ivoire</option><option value="ivory-coast-cameroon">Côte d’Ivoire → Cameroun</option></select><p class="small-note">La cotation est obtenue côté serveur pour le corridor choisi et peut expirer rapidement.</p><button id="public-sim-run" type="button">Obtenir la cotation et calculer</button></article><article><h3>Résultat de la cotation</h3><div id="public-sim-status" aria-live="polite">Saisissez vos paramètres puis lancez le calcul.</div><dl class="public-sim-result"><div><dt>Taux du corridor</dt><dd id="public-sim-rate">—</dd></div><div><dt>Platform fees</dt><dd id="public-sim-total">—</dd></div><div><dt>Montant net source</dt><dd id="public-sim-net-source">—</dd></div><div><dt>Montant net destination</dt><dd id="public-sim-net-destination">—</dd></div></dl><p class="small-note">Platform fees consolide l’ensemble des coûts. La cotation provient du service de corridor côté serveur. Aucun ordre, paiement ou écriture de ledger n’est créé depuis cette page.</p></article></div></section>
-    <section id="about" class="split"><article><h2 data-copy="aboutTitle">Une lecture publique des marchés</h2><p data-copy="aboutText">Les instruments, cours indicatifs et graphiques de tendance sont affichés à titre d’information et de recherche. La disponibilité et l’actualité des données peuvent varier selon les conditions de marché.</p><h3 data-copy="africanTitle">Perspectives africaines</h3><p data-copy="africanText">Douala, Abidjan, Abuja, Nairobi et Kinshasa constituent cinq perspectives éditoriales équilibrées. Elles ne représentent ni une place de cotation, ni une recommandation, ni un filtre d’investissement.</p></article><article><h2 data-copy="limitsTitle">Limites de la vue publique</h2><p data-copy="limitsText">Cette interface ne collecte aucun ordre, n’affiche aucun compte privé et ne remplace pas un conseil financier. Les fonctionnalités mobiles et authentifiées sont traitées séparément.</p><h3 data-copy="securityTitle">Protection des données</h3><p data-copy="securityText">Les informations personnelles, soldes et positions restent dans les environnements sécurisés auxquels la vue publique n’a pas accès.</p></article><article><h2 data-audience="audienceTitle">Pour les infrastructures financières et les investisseurs professionnels</h2><p data-audience="audienceText">AFM s’adresse en priorité aux prestataires de services de paiement, aux fintechs et aux investisseurs avertis agissant dans un cadre professionnel ou corporate. Les informations de marché sont destinées à l’analyse et à la diligence interne ; elles ne constituent ni une offre au public, ni une recommandation, ni une sollicitation d’investissement.</p></article></section>
-    <section id="api" class="compliance"><header><p class="eyebrow gold">API · SANDBOX · B2B</p><h2>Intégrer AFM dans votre infrastructure</h2><p>Un point d’entrée de préparation pour fintechs, PSPs et équipes corporate. Les tests sandbox sont séparés de la production, sans secret public et sans mouvement de fonds réel.</p></header><div class="compliance-grid"><article><h3>Documentation API</h3><p>Contrats, authentification Bearer, idempotence et webhooks sont présentés avant toute demande d’accès. <a href="/docs">Ouvrir la documentation</a></p></article><article><h3>Environnement sandbox</h3><p>Testez les parcours de données et les événements synthétiques dans l’environnement de préparation client. <a href="/sandbox">Accéder au portail sandbox</a></p></article><article><h3>Onboarding fintech &amp; PSP</h3><p>Décrivez votre cas d’usage, vos corridors, vos volumes et votre contact conformité pour recevoir un parcours d’intégration adapté.</p></article><article><h3>Étape 1 · Cadrage</h3><p>Identification de l’entreprise, rôle (fintech, PSP ou corporate), pays couverts, cas d’usage et contraintes de règlement.</p></article><article><h3>Étape 2 · Tests contrôlés</h3><p>Clés sandbox séparées, scénarios sans fonds réels, tests d’idempotence et validation des signatures webhook.</p></article><article><h3>Étape 3 · Revue</h3><p>Revue technique et conformité avant toute ouverture Live. Les identités des partenaires d’acheminement restent confidentielles.</p></article></div><footer>Demande d’accès sandbox : <a href="mailto:invest@africafrontiermarkets.com?subject=Demande%20AFM%20API%20Sandbox">invest@africafrontiermarkets.com</a></footer></section>
-    <section id="compliance" class="compliance"><header><p class="eyebrow gold" data-copy="complianceEyebrow">COMPLIANCE · ONBOARDING</p><h2 data-copy="complianceTitle">Onboarding et protections client</h2><p data-copy="complianceNotice">Les documents d’onboarding sont des versions de travail en attente de validation juridique et réglementaire. Cette page est un résumé public, non contractuel.</p></header><div class="compliance-grid"><article><h3 data-copy="roleTitle">Rôle de la plateforme</h3><p data-copy="roleText">AFM agit comme plateforme technologique. Elle ne conserve pas les fonds, devises ou titres des clients ; les services concernés sont assurés par des prestataires autorisés selon leurs propres conditions.</p></article><article><h3 data-copy="onboardingTitle">Conditions d’onboarding</h3><p data-copy="onboardingText">L’accès aux services qui le nécessitent reste soumis à une vérification d’identité et à des informations exactes et à jour. L’accès peut être restreint en cas d’obligation de conformité ou de risque de fraude.</p></article><article><h3 data-copy="fundsTitle">Conservation des avoirs</h3><p data-copy="fundsText">Les avoirs sont destinés à être détenus dans des comptes individuels auprès de prestataires autorisés. Ils ne sont pas mélangés aux avoirs propres d’AFM.</p></article><article><h3 data-copy="risksTitle">Risques importants</h3><p data-copy="risksText">La valeur des investissements peut baisser comme augmenter. Les conversions de devises comportent un risque de change et la disponibilité des services dépend de conditions de marché, de prestataires externes ou de la technologie.</p></article><article><h3 data-copy="docsTitle">Documentation</h3><p data-copy="docsText">Les versions contractuelles définitives seront mises à disposition après validation juridique, structuration réglementaire et confirmation exacte des services proposés.</p></article><article><h3 data-copy="adviceTitle">Information générale</h3><p data-copy="adviceText">Cette page ne constitue pas un conseil juridique, financier ou d’investissement, ni une invitation à effectuer une transaction.</p></article></div><footer data-copy="legal">Africa Frontier Markets · Informations publiques de conformité · Version web indépendante du processus mobile</footer></section>
-  </main><footer class="site-footer"><div class="shell">© Africa Frontier Markets · <span data-copy="footer">Vue publique de marché et de conformité</span></div></footer>
-  <script src="/static/afm-web.js"></script>
+  <header class="topnav">
+    <div class="nav-inner">
+      <div class="logo"><span class="mark">AFM</span> AfricaFrontierMarkets</div>
+      <nav class="tabs" id="tabs">
+        <button data-tab="plateforme" class="active">Plateforme</button>
+        <button data-tab="frontierpay">FrontierPay</button>
+        <button data-tab="easymarket">EasyMarket</button>
+        <button data-tab="fintech">Fintech & PSP</button>
+        <button data-tab="levee">Opportunite</button>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap" id="main"></main>
+  <footer>
+    <p>Africa Frontier Markets &copy; 2026 — EasyMarkets + FrontierPay</p>
+    <p style="margin-top:8px;font-size:0.75rem;">Plateforme de trading et paiements transfrontaliers pour l'Afrique. Risque de perte en capital.</p>
+  </footer>
+
+<script>
+// ===== DATA =====
+const markets = [
+  { code: "BRVM", name: "Bourse Regionale", country: "CI", currency: "XOF", open: "09:00", close: "15:30", status: "open", region: "west_africa" },
+  { code: "NGX", name: "Nigerian Exchange", country: "NG", currency: "NGN", open: "09:30", close: "14:30", status: "open", region: "west_africa" },
+  { code: "JSE", name: "Johannesburg SE", country: "ZA", currency: "ZAR", open: "09:00", close: "17:00", status: "open", region: "south_africa" },
+  { code: "NSE", name: "Nairobi SE", country: "KE", currency: "KES", open: "09:30", close: "15:00", status: "open", region: "east_africa" },
+  { code: "GSE", name: "Ghana SE", country: "GH", currency: "GHS", open: "10:00", close: "15:00", status: "open", region: "west_africa" },
+  { code: "EGX", name: "Egyptian Exchange", country: "EG", currency: "EGP", open: "09:30", close: "14:30", status: "closed", region: "north_africa" },
+  { code: "BSE", name: "Botswana SE", country: "BW", currency: "BWP", open: "10:00", close: "14:00", status: "open", region: "south_africa" },
+  { code: "USE", name: "Uganda SE", country: "UG", currency: "UGX", open: "10:00", close: "15:00", status: "open", region: "east_africa" },
+  { code: "DSE", name: "Dar es Salaam SE", country: "TZ", currency: "TZS", open: "10:00", close: "15:00", status: "open", region: "east_africa" },
+  { code: "LUSE", name: "Lusaka SE", country: "ZM", currency: "ZMW", open: "10:00", close: "15:00", status: "open", region: "south_africa" },
+  { code: "ZSE", name: "Zimbabwe SE", country: "ZW", currency: "ZWL", open: "10:00", close: "15:00", status: "halted", region: "south_africa" },
+  { code: "SEM", name: "Stock Exchange of Mauritius", country: "MU", currency: "MUR", open: "09:00", close: "13:30", status: "open", region: "east_africa" },
+  { code: "NSX", name: "Namibian SE", country: "NA", currency: "NAD", open: "09:00", close: "17:00", status: "open", region: "south_africa" },
+  { code: "BRVMBA", name: "BRVM Bond", country: "CI", currency: "XOF", open: "09:00", close: "15:30", status: "open", region: "west_africa" },
+  { code: "CSE", name: "Casablanca SE", country: "MA", currency: "MAD", open: "09:30", close: "15:30", status: "open", region: "north_africa" },
+  { code: "BVG", name: "Bourse de Guinee", country: "GN", currency: "GNF", open: "09:00", close: "15:00", status: "closed", region: "west_africa" },
+  { code: "RSE", name: "Rwanda SE", country: "RW", currency: "RWF", open: "10:00", close: "14:00", status: "open", region: "east_africa" },
+  { code: "MSE", name: "Malawi SE", country: "MW", currency: "MWK", open: "10:00", close: "12:00", status: "open", region: "south_africa" },
+  { code: "SSE", name: "Swaziland SE", country: "SZ", currency: "SZL", open: "09:00", close: "15:00", status: "open", region: "south_africa" },
+  { code: "BFX", name: "Bourse de Tunis", country: "TN", currency: "TND", open: "09:00", close: "13:00", status: "open", region: "north_africa" },
+];
+
+const traders = [
+  { name: "A. Diallo", return: 34.2, risk: "Modere", followers: 1240, allocation: 45, avatar: "AD" },
+  { name: "K. Osei", return: 28.7, risk: "Eleve", followers: 890, allocation: 30, avatar: "KO" },
+  { name: "M. Ndiaye", return: 22.1, risk: "Faible", followers: 2100, allocation: 60, avatar: "MN" },
+  { name: "J. Mwangi", return: 19.8, risk: "Modere", followers: 1560, allocation: 25, avatar: "JM" },
+  { name: "T. Mensah", return: 15.4, risk: "Faible", followers: 3200, allocation: 50, avatar: "TM" },
+  { name: "L. Okonkwo", return: 12.3, risk: "Faible", followers: 4100, allocation: 20, avatar: "LO" },
+];
+
+const signals = [
+  { author: "A. Diallo", ticker: "BRVM-CI", side: "buy", price: "4,250 XOF", time: "2 min", avatar: "AD" },
+  { author: "K. Osei", ticker: "MTNN", side: "sell", price: "195.50 NGN", time: "5 min", avatar: "KO" },
+  { author: "M. Ndiaye", ticker: "JSE-SAP", side: "buy", price: "682.00 ZAR", time: "12 min", avatar: "MN" },
+  { author: "J. Mwangi", ticker: "NSE-SCBK", side: "buy", price: "245.00 KES", time: "18 min", avatar: "JM" },
+  { author: "T. Mensah", ticker: "GSE-GOIL", side: "sell", price: "1.85 GHS", time: "25 min", avatar: "TM" },
+];
+
+const watchlist = [
+  { ticker: "BRVM-CI", name: "Societe Ivoirienne", price: "4,250", change: "+2.4%", currency: "XOF" },
+  { ticker: "MTNN", name: "MTN Nigeria", price: "195.50", change: "-0.8%", currency: "NGN" },
+  { ticker: "JSE-SAP", name: "Sappi Ltd", price: "682.00", change: "+1.2%", currency: "ZAR" },
+  { ticker: "NSE-SCBK", name: "StanChart Kenya", price: "245.00", change: "+0.5%", currency: "KES" },
+  { ticker: "GSE-GOIL", name: "GOIL Ghana", price: "1.85", change: "-1.1%", currency: "GHS" },
+  { ticker: "USE-UMEM", name: "UMEME Uganda", price: "280.00", change: "+3.2%", currency: "UGX" },
+];
+
+const corridors = [
+  { from: "Cameroun", to: "Côte d'Ivoire", psp: "MTN MoMo + Orange Money", fx: "XAF -> XOF", fee: "Indicatif", time: "Selon disponibilité", operators: [{ name: "MTN MoMo", logo: "https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg" }, { name: "Orange Money", logo: "https://upload.wikimedia.org/wikipedia/commons/c/c8/Orange_logo.svg" }] },
+  { from: "Côte d'Ivoire", to: "Ghana", psp: "Orange Money + MTN MoMo", fx: "XOF -> GHS", fee: "Indicatif", time: "Selon disponibilité", operators: [{ name: "Orange Money", logo: "https://upload.wikimedia.org/wikipedia/commons/c/c8/Orange_logo.svg" }, { name: "MTN MoMo", logo: "https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg" }] },
+  { from: "Côte d'Ivoire", to: "Nigeria", psp: "Orange Money + MTN MoMo", fx: "XOF -> NGN", fee: "Indicatif", time: "Selon disponibilité", operators: [{ name: "Orange Money", logo: "https://upload.wikimedia.org/wikipedia/commons/c/c8/Orange_logo.svg" }, { name: "MTN MoMo", logo: "https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg" }] },
+  { from: "Bénin", to: "Nigeria", psp: "Moov Money + MTN MoMo", fx: "XOF -> NGN", fee: "Indicatif", time: "Selon disponibilité", operators: [{ name: "Moov Money", logo: "https://upload.wikimedia.org/wikipedia/commons/8/8a/Moov_Africa_logo.svg" }, { name: "MTN MoMo", logo: "https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg" }] },
+  { from: "Cameroun", to: "Nigeria", psp: "MTN MoMo + Orange Money", fx: "XAF -> NGN", fee: "Indicatif", time: "Selon disponibilité", operators: [{ name: "MTN MoMo", logo: "https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg" }, { name: "Orange Money", logo: "https://upload.wikimedia.org/wikipedia/commons/c/c8/Orange_logo.svg" }] },
+];
+const publicLanguages = { fr: { title: "Langue", french: "Français", english: "English (UK)", origin: "Pays de départ", all: "Tous les pays", corridors: "Corridors disponibles", operators: "Opérateurs disponibles", availability: "Disponibilité simulée", refresh: "Actualisation simulée" }, en: { title: "Language", french: "French", english: "English (UK)", origin: "Departure country", all: "All countries", corridors: "Available corridors", operators: "Available operators", availability: "Simulated availability", refresh: "Simulated refresh" } };
+let publicLanguage = localStorage.getItem('afm.language') === 'en' ? 'en' : 'fr';
+let availabilityTick = 0;
+
+// ===== RENDER FUNCTIONS =====
+
+function renderPlateforme() {
+  return `
+    <div class="hero">
+      <h1>Le futur des marches frontieres africains</h1>
+      <p>EasyMarkets + FrontierPay : trading, paiements transfrontaliers et monetisation pour les createurs africains. Une plateforme unifiee, securisee et adaptee aux realites du continent.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Marches actifs</div><div class="value">20</div><div class="change up">+3 ce mois</div></div>
+      <div class="stat-card"><div class="label">Corridors de paiement</div><div class="value">18</div><div class="change up">+5 ce trimestre</div></div>
+      <div class="stat-card"><div class="label">PSP integres</div><div class="value">4</div><div class="change up">Kora, Fincra, Flutterwave, Stripe</div></div>
+      <div class="stat-card"><div class="label">Createurs actifs</div><div class="value">12.4K</div><div class="change up">+18% ce mois</div></div>
+    </div>
+    <div class="section">
+      <h2>Positionnement concurrentiel</h2>
+      <table>
+        <tr><th>Critere</th><th>AfricaFrontierMarkets</th><th>Robinhood</th><th>eToro</th><th>Chipper Cash</th></tr>
+        <tr><td>Marches africains</td><td><span class="badge badge-success">20 marches</span></td><td><span class="badge badge-danger">0</span></td><td><span class="badge badge-warning">3</span></td><td><span class="badge badge-warning">N/A (pas de trading)</span></td></tr>
+        <tr><td>Copy Trading</td><td><span class="badge badge-success">Actif</span></td><td><span class="badge badge-danger">Non</span></td><td><span class="badge badge-success">Oui</span></td><td><span class="badge badge-danger">Non</span></td></tr>
+        <tr><td>Paiements XOF/NGN</td><td><span class="badge badge-success">Natif</span></td><td><span class="badge badge-danger">USD seulement</span></td><td><span class="badge badge-warning">USD/EUR</span></td><td><span class="badge badge-success">Oui</span></td></tr>
+        <tr><td>Monetisation createurs</td><td><span class="badge badge-success">35% Ads / 50% Creator</span></td><td><span class="badge badge-danger">Non</span></td><td><span class="badge badge-danger">Non</span></td><td><span class="badge badge-danger">Non</span></td></tr>
+        <tr><td>Frais de transaction</td><td><span class="badge badge-success">0.9% - 1.8%</span></td><td><span class="badge badge-success">0%</span></td><td><span class="badge badge-warning">1%</span></td><td><span class="badge badge-success">1%</span></td></tr>
+      </table>
+    </div>
+    <div class="section">
+      <h2>Architecture technique</h2>
+      <div class="grid-3">
+        <div class="card"><h4>API Gateway</h4><div class="big">FastAPI</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Async, OpenAPI, auto-docs</p></div>
+        <div class="card"><h4>Base de donnees</h4><div class="big">PostgreSQL 16</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Connection pooling, async</p></div>
+        <div class="card"><h4>Cache & Events</h4><div class="big">Redis 7</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Rate limiting, pub/sub, streams</p></div>
+        <div class="card"><h4>Observabilite</h4><div class="big">Prometheus</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Metrics, health, ready probes</p></div>
+        <div class="card"><h4>Deploiement</h4><div class="big">K8s + Docker</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">HPA 3-10 replicas, rolling update</p></div>
+        <div class="card"><h4>Securite</h4><div class="big">JWT + HMAC</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">15min tokens, webhook signatures</p></div>
+      </div>
+    </div>
+  `;
+}
+
+function publicAvailability(name, index) {
+  const states = publicLanguage === 'fr' ? ['Disponible', 'Disponibilité limitée', 'Indisponible'] : ['Available', 'Limited availability', 'Unavailable'];
+  return states[(name.length + index + availabilityTick) % states.length];
+}
+function publicStatusClass(label) {
+  return label.toLowerCase().includes('indispon') || label.toLowerCase().includes('unavailable') ? 'unavailable' : label.toLowerCase().includes('limit') ? 'limited' : 'available';
+}
+function renderPublicOperators(corridor, index) {
+  return `<div class="operator-badges">${corridor.operators.map(operator => { const status = publicAvailability(operator.name, index); return `<span class="operator-badge"><img class="operator-logo" src="${operator.logo}" alt="${operator.name}"><span class="availability-dot ${publicStatusClass(status)}"></span><span>${operator.name} · ${status}</span></span>`; }).join('')}</div>`;
+}
+function renderFrontierPay() {
+  const lang = publicLanguages[publicLanguage];
+  const origins = [...new Set(corridors.map(c => c.from))];
+  return `
+    <div class="hero">
+      <div class="language-control" aria-label="${lang.title}"><span>${lang.title}</span><button class="${publicLanguage === 'fr' ? 'active' : ''}" onclick="setPublicLanguage('fr')">${lang.french}</button><button class="${publicLanguage === 'en' ? 'active' : ''}" onclick="setPublicLanguage('en')">${lang.english}</button></div>
+      <h1>FrontierPay</h1>
+      <p>${publicLanguage === 'fr' ? 'Transferts mobiles transfrontaliers interafrique. Visualisez le coût total et le montant net avant toute action.' : 'Cross-border mobile transfers across Africa. View the total cost and net amount before any action.'}</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">${publicLanguage === 'fr' ? 'Devises supportées' : 'Supported currencies'}</div><div class="value">18</div><div class="change up">XAF, XOF, NGN, GHS, USD...</div></div>
+      <div class="stat-card"><div class="label">${publicLanguage === 'fr' ? 'Frais de plateforme' : 'Platform fees'}</div><div class="value">Indicatif</div><div class="change up">${publicLanguage === 'fr' ? 'Simulation sans mouvement de fonds' : 'Simulation with no funds movement'}</div></div>
+      <div class="stat-card"><div class="label">${publicLanguage === 'fr' ? 'Actualisation' : 'Refresh'}</div><div class="value">15s</div><div class="change up">${lang.refresh}</div></div>
+    </div>
+    <div class="section">
+      <h2>${lang.corridors}</h2>
+      <div class="filter-row"><label>${lang.origin}<select id="frontier-origin-filter" onchange="renderFrontierCorridors(this.value)"><option value="all">${lang.all}</option>${origins.map(origin => `<option value="${origin}">${origin}</option>`).join('')}</select></label><span class="live-note">${lang.availability} · ${lang.refresh}</span></div>
+      <div id="frontier-corridor-table">${renderFrontierCorridorTable('all')}</div>
+    </div>
+    <div class="section"><h2>Stack technique FrontierPay</h2><div class="grid-2"><div class="card"><h4>Kora</h4><div class="big">Rail Afrique de l’Ouest</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">XOF, NGN, KES, GHS — API REST, webhooks sécurisés</p></div><div class="card"><h4>Fincra</h4><div class="big">Rail Afrique + international</div><p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Multi-devises et comptes virtuels</p></div></div></div>
+  `;
+}
+function renderFrontierCorridorTable(origin) {
+  const lang = publicLanguages[publicLanguage];
+  const filtered = origin === 'all' ? corridors : corridors.filter(c => c.from === origin);
+  return `<table><tr><th>${publicLanguage === 'fr' ? 'Origine' : 'Origin'}</th><th>${publicLanguage === 'fr' ? 'Destination' : 'Destination'}</th><th>${lang.operators}</th><th>FX</th></tr>${filtered.map((c, index) => `<tr><td>${c.from}</td><td>${c.to}</td><td>${renderPublicOperators(c, index)}</td><td>${c.fx}</td></tr>`).join('')}</table>`;
+}
+function renderFrontierCorridors(origin) { const target = document.getElementById('frontier-corridor-table'); if (target) target.innerHTML = renderFrontierCorridorTable(origin); }
+function setPublicLanguage(language) { publicLanguage = language; localStorage.setItem('afm.language', language); renderTab('frontierpay'); }
+
+function renderEasyMarket() {
+  return `
+    <div class="hero">
+      <h1>EasyMarket</h1>
+      <p>Trading sur 20 marches africains avec copy trading social, wallet multi-devises et signaux en temps reel. Construit pour les traders africains, par des africains.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Utilisateurs actifs</div><div class="value">8.7K</div><div class="change up">+24% ce mois</div></div>
+      <div class="stat-card"><div class="label">Volume trade</div><div class="value">$12.4M</div><div class="change up">+18% ce mois</div></div>
+      <div class="stat-card"><div class="label">Copy-traders</div><div class="value">3.2K</div><div class="change up">+45% ce mois</div></div>
+      <div class="stat-card"><div class="label">Signaux/jour</div><div class="value">1,240</div><div class="change up">+12% ce mois</div></div>
+    </div>
+    <div class="section">
+      <div class="sub-tabs" id="em-tabs">
+        <button data-em="dashboard" class="active">Dashboard</button>
+        <button data-em="marches">Marches</button>
+        <button data-em="watchlist">Watchlist</button>
+        <button data-em="ordres">Ordres</button>
+        <button data-em="social">Social</button>
+        <button data-em="copy">Copy Trading</button>
+      </div>
+      <div id="em-content"></div>
+    </div>
+  `;
+}
+
+function renderEMDashboard() {
+  return `
+    <div class="grid-3">
+      <div class="card"><h4>Valeur du portefeuille</h4><div class="big">$24,580.00</div><div class="change up">+5.2% ce mois</div></div>
+      <div class="card"><h4>Positions ouvertes</h4><div class="big">12</div><div class="change up">3 en profit</div></div>
+      <div class="card"><h4>Disponible</h4><div class="big">$8,420.00</div><div class="change up">XOF, NGN, USD</div></div>
+    </div>
+    <h3 style="margin-top:24px;">Allocation</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Actions BRVM</h4>
+        <div class="big">45%</div>
+        <div class="progress-bar"><div class="fill" style="width:45%;background:var(--deep)"></div></div>
+      </div>
+      <div class="card">
+        <h4>Actions NGX</h4>
+        <div class="big">25%</div>
+        <div class="progress-bar"><div class="fill" style="width:25%;background:var(--rose)"></div></div>
+      </div>
+      <div class="card">
+        <h4>Actions JSE</h4>
+        <div class="big">15%</div>
+        <div class="progress-bar"><div class="fill" style="width:15%;background:var(--good)"></div></div>
+      </div>
+      <div class="card">
+        <h4>Cash</h4>
+        <div class="big">15%</div>
+        <div class="progress-bar"><div class="fill" style="width:15%;background:var(--soft)"></div></div>
+      </div>
+    </div>
+    <h3 style="margin-top:24px;">Top Performers</h3>
+    <table>
+      <tr><th>Ticker</th><th>Nom</th><th>Prix</th><th>Change</th><th>Volume</th></tr>
+      <tr><td>BRVM-CI</td><td>Societe Ivoirienne</td><td>4,250 XOF</td><td class="change up">+2.4%</td><td>1.2M</td></tr>
+      <tr><td>MTNN</td><td>MTN Nigeria</td><td>195.50 NGN</td><td class="change down">-0.8%</td><td>8.5M</td></tr>
+      <tr><td>JSE-SAP</td><td>Sappi Ltd</td><td>682.00 ZAR</td><td class="change up">+1.2%</td><td>450K</td></tr>
+      <tr><td>NSE-SCBK</td><td>StanChart Kenya</td><td>245.00 KES</td><td class="change up">+0.5%</td><td>320K</td></tr>
+    </table>
+  `;
+}
+
+function renderEMMarches() {
+  return `
+    <h3>Marches frontieres africains</h3>
+    <div class="family-chips" aria-label="Familles de titres"><button class="family-chip active" onclick="setMarketFamily(this, 'all')">Toutes les familles</button><button class="family-chip" onclick="setMarketFamily(this, 'equities')">Actions</button><button class="family-chip" onclick="setMarketFamily(this, 'bonds')">Obligations</button><button class="family-chip" onclick="setMarketFamily(this, 'funds')">Fonds & ETF</button><button class="family-chip" onclick="setMarketFamily(this, 'crypto')">Cryptomonnaies</button></div>
+    <p id="market-family-note" class="live-note">Consultation contrôlée : sélectionnez une famille de titres.</p>
+    <div style="margin-bottom:16px;">
+      <button class="btn btn-outline" onclick="filterMarkets('all')">Tous</button>
+      <button class="btn btn-outline" onclick="filterMarkets('west_africa')">Afrique de l'Ouest</button>
+      <button class="btn btn-outline" onclick="filterMarkets('east_africa')">Afrique de l'Est</button>
+      <button class="btn btn-outline" onclick="filterMarkets('south_africa')">Afrique Australe</button>
+      <button class="btn btn-outline" onclick="filterMarkets('north_africa')">Afrique du Nord</button>
+    </div>
+    <table id="markets-table">
+      <tr><th>Code</th><th>Nom</th><th>Pays</th><th>Devise</th><th>Horaires</th><th>Statut</th></tr>
+      ${markets.map(m => `<tr data-region="${m.region}"><td><strong>${m.code}</strong></td><td>${m.name}</td><td>${m.country}</td><td>${m.currency}</td><td>${m.open} - ${m.close}</td><td>${m.status === 'open' ? '<span class="badge badge-success">Ouvert</span>' : m.status === 'halted' ? '<span class="badge badge-danger">Suspendu</span>' : '<span class="badge badge-warning">Ferme</span>'}</td></tr>`).join('')}
+    </table>
+  `;
+}
+
+function renderEMWatchlist() {
+  return `
+    <h3>Ma Watchlist</h3>
+    <table>
+      <tr><th>Ticker</th><th>Nom</th><th>Prix</th><th>Change</th><th>Devise</th><th>Action</th></tr>
+      ${watchlist.map(w => `<tr><td><strong>${w.ticker}</strong></td><td>${w.name}</td><td>${w.price}</td><td class="change ${w.change.startsWith('+') ? 'up' : 'down'}">${w.change}</td><td>${w.currency}</td><td><button class="btn btn-primary" style="padding:4px 12px;font-size:0.8rem;">Acheter</button></td></tr>`).join('')}
+    </table>
+    <div style="margin-top:16px;">
+      <button class="btn btn-outline" onclick="alert('Ajouter un titre a la watchlist')">+ Ajouter un titre</button>
+    </div>
+  `;
+}
+
+function renderEMOrdres() {
+  return `
+    <div class="grid-2">
+      <div>
+        <h3>Nouvel ordre</h3>
+        <div class="card" style="margin-top:12px;">
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.8rem;color:var(--soft);margin-bottom:4px;">Type d'ordre</label>
+            <select style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:Inter;">
+              <option>Marche</option>
+              <option>Limite</option>
+              <option>Stop</option>
+            </select>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.8rem;color:var(--soft);margin-bottom:4px;">Marche</label>
+            <select style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:Inter;">
+              <option>BRVM - Cote d'Ivoire</option>
+              <option>NGX - Nigeria</option>
+              <option>JSE - South Africa</option>
+              <option>NSE - Kenya</option>
+              <option>GSE - Ghana</option>
+            </select>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.8rem;color:var(--soft);margin-bottom:4px;">Ticker</label>
+            <input type="text" placeholder="ex: BRVM-CI" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:Inter;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.8rem;color:var(--soft);margin-bottom:4px;">Quantite</label>
+            <input type="number" placeholder="100" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:Inter;">
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.8rem;color:var(--soft);margin-bottom:4px;">Prix limite (optionnel)</label>
+            <input type="number" placeholder="Prix auto si marche" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:Inter;">
+          </div>
+          <button class="btn btn-primary" style="width:100%;">Passer l'ordre</button>
+        </div>
+      </div>
+      <div>
+        <h3>Recapitulatif des frais</h3>
+        <div class="card" style="margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>Commission</span><span>0.15%</span></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>Frais de change</span><span>0.5%</span></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>Frais de settlement</span><span>0.1%</span></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:700;"><span>Total frais</span><span>0.75%</span></div>
+        </div>
+        <h3 style="margin-top:24px;">Historique</h3>
+        <table>
+          <tr><th>Date</th><th>Ticker</th><th>Type</th><th>Qt</th><th>Prix</th><th>Statut</th></tr>
+          <tr><td>06/07</td><td>BRVM-CI</td><td>Achat</td><td>100</td><td>4,200</td><td><span class="badge badge-success">Execute</span></td></tr>
+          <tr><td>05/07</td><td>MTNN</td><td>Vente</td><td>50</td><td>198.00</td><td><span class="badge badge-success">Execute</span></td></tr>
+          <tr><td>04/07</td><td>JSE-SAP</td><td>Achat</td><td>20</td><td>675.00</td><td><span class="badge badge-warning">En attente</span></td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderEMSocial() {
+  return `
+    <div class="grid-2">
+      <div>
+        <h3>Feed de signaux</h3>
+        ${signals.map(s => `
+          <div class="signal-card">
+            <div class="meta">
+              <div class="avatar" style="width:32px;height:32px;font-size:0.75rem;">${s.avatar}</div>
+              <strong>${s.author}</strong>
+              <span style="color:var(--soft);font-size:0.8rem;">${s.time}</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="ticker">${s.ticker}</span>
+              <span class="side-${s.side}">${s.side === 'buy' ? 'ACHAT' : 'VENTE'}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;">${s.price}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div>
+        <h3>Trending</h3>
+        <div class="card" style="margin-bottom:16px;">
+          <h4>Hashtags populaires</h4>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+            <span class="badge badge-success">#BRVM</span>
+            <span class="badge badge-success">#NGX</span>
+            <span class="badge badge-warning">#JSE</span>
+            <span class="badge badge-success">#CopyTrading</span>
+            <span class="badge badge-warning">#Naira</span>
+            <span class="badge badge-success">#XOF</span>
+          </div>
+        </div>
+        <h3>Top contributeurs</h3>
+        <table>
+          <tr><th>Trader</th><th>Return</th><th>Followers</th></tr>
+          <tr><td>A. Diallo</td><td class="change up">+34.2%</td><td>1,240</td></tr>
+          <tr><td>K. Osei</td><td class="change up">+28.7%</td><td>890</td></tr>
+          <tr><td>M. Ndiaye</td><td class="change up">+22.1%</td><td>2,100</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderEMCopy() {
+  return `
+    <h3>Trader leaders a copier</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;">
+      ${traders.map(t => `
+        <div class="trader-card">
+          <div class="header">
+            <div class="avatar">${t.avatar}</div>
+            <div>
+              <div class="name">${t.name}</div>
+              <div class="risk">Risque: ${t.risk} | ${t.followers} followers</div>
+            </div>
+          </div>
+          <div class="return">+${t.return}% YTD</div>
+          <div class="progress-bar"><div class="fill" style="width:${Math.min(t.return * 2, 100)}%;background:${t.return > 25 ? 'var(--good)' : t.return > 15 ? 'var(--warn)' : 'var(--soft)'}"></div></div>
+          <button class="btn btn-primary" style="width:100%;" onclick="alert('Copier ${t.name} avec ${t.allocation}% allocation')">Copier (${t.allocation}%)</button>
+        </div>
+      `).join('')}
+    </div>
+    <h3 style="margin-top:32px;">Mes copy-trades actifs</h3>
+    <table>
+      <tr><th>Leader</th><th>Allocation</th><th>Return</th><th>Statut</th><th>Action</th></tr>
+      <tr><td>A. Diallo</td><td>45%</td><td class="change up">+12.4%</td><td><span class="badge badge-success">Actif</span></td><td><button class="btn btn-outline" style="padding:4px 12px;font-size:0.8rem;">Arreter</button></td></tr>
+      <tr><td>M. Ndiaye</td><td>30%</td><td class="change up">+8.2%</td><td><span class="badge badge-success">Actif</span></td><td><button class="btn btn-outline" style="padding:4px 12px;font-size:0.8rem;">Arreter</button></td></tr>
+    </table>
+  `;
+}
+
+function renderFintech() {
+  return `
+    <div class="hero">
+      <h1>Fintech & PSP</h1>
+      <p>API REST documentee, securisee et prete pour l'integration. 7 endpoints principaux pour gerer l'ensemble du cycle de vie utilisateur.</p>
+    </div>
+    <div class="section">
+      <h2>Endpoints API</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>POST /platforms</h4>
+          <div class="big">Onboarding</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Cree une plateforme partenaire avec API key et secret</p>
+        </div>
+        <div class="card">
+          <h4>POST /auth/token</h4>
+          <div class="big">Authentication</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">JWT access (15min) + refresh token (7j)</p>
+        </div>
+        <div class="card">
+          <h4>POST /api/v1/orders</h4>
+          <div class="big">Trading</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Marche, Limite, Stop — routing broker automatique</p>
+        </div>
+        <div class="card">
+          <h4>POST /api/v1/payments</h4>
+          <div class="big">Paiements</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Initie un paiement avec idempotence SHA256</p>
+        </div>
+        <div class="card">
+          <h4>GET /api/v1/wallet/balance</h4>
+          <div class="big">Wallet</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Balance multi-devises avec conversion FX centralisee</p>
+        </div>
+        <div class="card">
+          <h4>POST /api/v1/copy-trading/start</h4>
+          <div class="big">Copy Trading</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Suivi d'un trader leader avec allocation %</p>
+        </div>
+        <div class="card">
+          <h4>GET /api/v1/revenue/split</h4>
+          <div class="big">Revenue</div>
+          <p style="font-size:0.8rem;color:var(--soft);margin-top:4px;">Split 35% Ads / 50% Creator / 15% Platform</p>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <h2>Securite API</h2>
+      <table>
+        <tr><th>Mecanisme</th><th>Implementation</th><th>Status</th></tr>
+        <tr><td>Authentification</td><td>JWT HS256, 15min expiration</td><td><span class="badge badge-success">Actif</span></td></tr>
+        <tr><td>Rate Limiting</td><td>Redis sliding window, 100 req/min</td><td><span class="badge badge-success">Actif</span></td></tr>
+        <tr><td>Webhook HMAC</td><td>SHA256 signature verification</td><td><span class="badge badge-success">Actif</span></td></tr>
+        <tr><td>API Key Rotation</td><td>90-day expiry, POST /rotate-key</td><td><span class="badge badge-success">Actif</span></td></tr>
+        <tr><td>CORS</td><td>Whitelist strict en production</td><td><span class="badge badge-success">Actif</span></td></tr>
+        <tr><td>Input Validation</td><td>Pydantic v2 with constraints</td><td><span class="badge badge-success">Actif</span></td></tr>
+      </table>
+    </div>
+  `;
+}
+
+function renderLevee() {
+  return `
+    <div class="hero">
+      <h1>Opportunite d'investissement</h1>
+      <p>Africa Frontier Markets construit l'infrastructure financiere de l'Afrique. Rejoignez la revolution des marches frontieres.</p>
+    </div>
+    <div class="section">
+      <h2>Roadmap MVP</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h4>Q3 2026</h4>
+          <div class="big">MVP Live</div>
+          <ul style="margin-top:12px;font-size:0.9rem;color:var(--soft);list-style:none;">
+            <li>BRVM + NGX trading live</li>
+            <li>Kora + Fincra paiements</li>
+            <li>Copy trading beta</li>
+            <li>1,000 utilisateurs cible</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Q4 2026</h4>
+          <div class="big">Scale</div>
+          <ul style="margin-top:12px;font-size:0.9rem;color:var(--soft);list-style:none;">
+            <li>+10 marches (JSE, NSE, GSE)</li>
+            <li>Flutterwave + Stripe integration</li>
+            <li>Social trading v1</li>
+            <li>10,000 utilisateurs cible</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Q1 2027</h4>
+          <div class="big">Monetisation</div>
+          <ul style="margin-top:12px;font-size:0.9rem;color:var(--soft);list-style:none;">
+            <li>COSY Ads Manager live</li>
+            <li>Revenue split 35/50/15</li>
+            <li>API partenaires ouverte</li>
+            <li>50,000 utilisateurs cible</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Q2 2027</h4>
+          <div class="big">Pan-African</div>
+          <ul style="margin-top:12px;font-size:0.9rem;color:var(--soft);list-style:none;">
+            <li>20 marches couverts</li>
+            <li>Mobile money integration</li>
+            <li>Regulatory compliance multi-pays</li>
+            <li>100,000 utilisateurs cible</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <h2>Projections financieres (5 ans)</h2>
+      <table>
+        <tr><th>Annee</th><th>Utilisateurs</th><th>Volume trade</th><th>Volume paiements</th><th>Revenus</th></tr>
+        <tr><td>2026</td><td>12,000</td><td>$50M</td><td>$20M</td><td>$1.2M</td></tr>
+        <tr><td>2027</td><td>50,000</td><td>$250M</td><td>$100M</td><td>$6.0M</td></tr>
+        <tr><td>2028</td><td>150,000</td><td>$800M</td><td>$400M</td><td>$18.0M</td></tr>
+        <tr><td>2029</td><td>400,000</td><td>$2.0B</td><td>$1.0B</td><td>$45.0M</td></tr>
+        <tr><td>2030</td><td>1,000,000</td><td>$5.0B</td><td>$2.5B</td><td>$100M</td></tr>
+      </table>
+    </div>
+    <div class="section" style="background:var(--danger-bg);border-color:var(--danger);">
+      <h2 style="color:var(--danger);">Disclaimer</h2>
+      <p style="color:var(--danger);font-size:0.9rem;">Le trading sur les marches frontieres comporte des risques significatifs de perte en capital. Les performances passees ne garantissent pas les resultats futurs. Africa Frontier Markets est une plateforme technologique et ne fournit pas de conseils en investissement. Veuillez consulter un conseiller financier agree avant de prendre des decisions d'investissement.</p>
+    </div>
+  `;
+}
+
+// ===== EVENT LISTENERS =====
+
+document.addEventListener('DOMContentLoaded', () => {
+  const main = document.getElementById('main');
+  const tabs = document.getElementById('tabs');
+
+  function renderTab(tab) {
+    switch(tab) {
+      case 'plateforme': main.innerHTML = renderPlateforme(); break;
+      case 'frontierpay': main.innerHTML = renderFrontierPay(); break;
+      case 'easymarket':
+        main.innerHTML = renderEasyMarket();
+        setupEMTabs();
+        break;
+      case 'fintech': main.innerHTML = renderFintech(); break;
+      case 'levee': main.innerHTML = renderLevee(); break;
+    }
+  }
+
+  function setupEMTabs() {
+    const emTabs = document.getElementById('em-tabs');
+    const emContent = document.getElementById('em-content');
+    if (!emTabs || !emContent) return;
+
+    function renderEM(tab) {
+      switch(tab) {
+        case 'dashboard': emContent.innerHTML = renderEMDashboard(); break;
+        case 'marches': emContent.innerHTML = renderEMMarches(); break;
+        case 'watchlist': emContent.innerHTML = renderEMWatchlist(); break;
+        case 'ordres': emContent.innerHTML = renderEMOrdres(); break;
+        case 'social': emContent.innerHTML = renderEMSocial(); break;
+        case 'copy': emContent.innerHTML = renderEMCopy(); break;
+      }
+    }
+
+    emTabs.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        emTabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderEM(btn.dataset.em);
+      });
+    });
+
+    renderEM('dashboard');
+  }
+
+  tabs.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTab(btn.dataset.tab);
+    });
+  });
+
+  window.renderPublicTab = renderTab;
+  renderTab('plateforme');
+  setInterval(() => {
+    availabilityTick += 1;
+    const filter = document.getElementById('frontier-origin-filter');
+    if (filter) renderFrontierCorridors(filter.value);
+  }, 15000);
+});
+
+function setMarketFamily(button, family) {
+  document.querySelectorAll('.family-chip').forEach(chip => chip.classList.remove('active'));
+  button.classList.add('active');
+  const note = document.getElementById('market-family-note');
+  if (note) note.textContent = family === 'crypto' ? 'Cryptomonnaies : instruments à ajouter après validation de la source de marché.' : family === 'all' ? 'Consultation contrôlée : sélectionnez une famille de titres.' : `Famille sélectionnée : ${button.textContent}.`;
+}
+
+function filterMarkets(region) {
+  const rows = document.querySelectorAll('#markets-table tr[data-region]');
+  rows.forEach(row => {
+    if (region === 'all' || row.dataset.region === region) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+</script>
 </body>
 </html>

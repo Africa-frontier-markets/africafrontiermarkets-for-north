@@ -11,9 +11,10 @@ def test_public_web_frontend_is_standalone_from_mobile_expo():
     assert "react-native-css-interop" not in page
     frontend = (ROOT / "public" / "afm-web.js").read_text(encoding="utf-8")
     assert "/api/v1/public/market-products" in frontend
-    assert "data-filter=\"crypto\"" in page
-    assert "Onboarding et protections client" in page
-    assert "prestataires de services de paiement" in page
+    assert "Cryptomonnaies" in page
+    assert "setMarketFamily" in page
+    assert "Opportunite d'investissement" in page
+    assert "Regulatory compliance multi-pays" in page
     assert "investment solicitation" in frontend
 
 
