@@ -316,7 +316,7 @@ function renderPlateforme() {
 }
 
 function publicAvailability(name, index) {
-  return publicLanguage === 'fr' ? 'Aperçu sandbox' : 'Sandbox preview';
+  return publicLanguage === 'fr' ? 'Aperçu Kora Live' : 'Kora Live preview';
 }
 function publicStatusClass(label) {
   return label.toLowerCase().includes('indispon') || label.toLowerCase().includes('unavailable') ? 'unavailable' : label.toLowerCase().includes('limit') ? 'limited' : 'available';
@@ -339,14 +339,14 @@ function renderFrontierPay() {
       <div class="stat-card"><div class="label">${publicLanguage === 'fr' ? 'Actualisation' : 'Refresh'}</div><div class="value">15s</div><div class="change up">${lang.refresh}</div></div>
     </div>
     <div class="section">
-      <h2>${publicLanguage === 'fr' ? 'Simulateur de corridor sandbox' : 'Sandbox corridor simulator'}</h2>
-      <p class="live-note">${publicLanguage === 'fr' ? 'Cotation Kora côté serveur, sans création de transaction ni mouvement de fonds. Minimum : 100 000 FCFA.' : 'Server-side Kora quote, with no transaction creation or funds movement. Minimum: 100,000 FCFA.'}</p>
+      <h2>${publicLanguage === 'fr' ? 'Prévisualisation de corridor Kora Live' : 'Kora Live corridor preview'}</h2>
+      <p class="live-note">${publicLanguage === 'fr' ? 'Cotation Kora Live côté serveur, sans création de transaction ni mouvement de fonds. Minimum : 100 000 FCFA. La disponibilité dépend des corridors activés.' : 'Server-side Kora Live quote, with no transaction creation or funds movement. Minimum: 100,000 FCFA. Availability depends on activated corridors.'}</p>
       <div class="filter-row">
         <label>Corridor<select id="frontier-sim-corridor"><option value="cameroon-ivory-coast">Cameroun → Côte d’Ivoire · XAF → XOF</option><option value="ivory-coast-cameroon">Côte d’Ivoire → Cameroun · XOF → XAF</option><option value="ci-ghana">Côte d’Ivoire → Ghana · XOF → GHS</option><option value="ci-nigeria">Côte d’Ivoire → Nigeria · XOF → NGN</option><option value="cameroon-nigeria">Cameroun → Nigeria · XAF → NGN</option><option value="benin-nigeria">Bénin → Nigeria · XOF → NGN</option></select></label>
         <label>${publicLanguage === 'fr' ? 'Montant' : 'Amount'}<input id="frontier-sim-amount" type="number" min="100000" step="1000" value="100000" inputmode="decimal"></label>
         <button class="btn btn-primary" id="frontier-sim-run" type="button" onclick="runFrontierSimulation()">${publicLanguage === 'fr' ? 'Obtenir la cotation' : 'Get quote'}</button>
       </div>
-      <p id="frontier-sim-status" class="live-note" aria-live="polite">${publicLanguage === 'fr' ? 'Aperçu non financier uniquement.' : 'Non-financial preview only.'}</p>
+      <p id="frontier-sim-status" class="live-note" aria-live="polite">${publicLanguage === 'fr' ? 'Aperçu Kora Live non financier uniquement.' : 'Kora Live non-financial preview only.'}</p>
       <div id="frontier-sim-result" class="grid-2" hidden></div>
     </div>
     <div class="section">
@@ -371,7 +371,7 @@ async function runFrontierSimulation() {
   const currencies = { 'cameroon-ivory-coast': ['XAF', 'XOF'], 'ivory-coast-cameroon': ['XOF', 'XAF'], 'ci-ghana': ['XOF', 'GHS'], 'ci-nigeria': ['XOF', 'NGN'], 'cameroon-nigeria': ['XAF', 'NGN'], 'benin-nigeria': ['XOF', 'NGN'] };
   const [source, destination] = currencies[corridor] || [];
   if (!Number.isFinite(amount) || amount < 100000) { status.textContent = publicLanguage === 'fr' ? 'Le montant minimum est de 100 000 FCFA.' : 'The minimum amount is 100,000 FCFA.'; result.hidden = true; return; }
-  button.disabled = true; status.textContent = publicLanguage === 'fr' ? 'Obtention de la cotation Kora sandbox…' : 'Requesting Kora sandbox quote…'; result.hidden = true;
+  button.disabled = true; status.textContent = publicLanguage === 'fr' ? 'Obtention de la cotation Kora Live…' : 'Requesting Kora Live quote…'; result.hidden = true;
   try {
     const response = await fetch('/api/v1/public/frontierpay/simulate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, source_currency: source, beneficiary_currency: destination, corridor, kaybic_fee: amount * .01, kora_payin_fee: amount * .03, kora_payout_fee: amount * .02, afm_fee: amount * .02, direction: 'payout' }) });
     const data = await response.json().catch(() => ({}));
