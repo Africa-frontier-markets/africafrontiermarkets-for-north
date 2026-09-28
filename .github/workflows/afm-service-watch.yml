@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   health-watch:
-    name: Check public service health
+    name: Check public service and Kora webhook ingress
     runs-on: ubuntu-latest
     steps:
       - name: Check root and www endpoints
@@ -44,6 +44,32 @@ jobs:
           fi
           echo "failed=false" >> "$GITHUB_OUTPUT"
           echo 'All AFM endpoints returned successful GET and HEAD responses.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check Kora webhook ingress and signature boundary
+        shell: bash
+        run: |
+          set +e
+          url="https://africafrontiermarkets.com/webhooks/kora"
+          body='{"id":"afm-monitor-invalid-signature","event":"charge.failed","data":{"reference":"afm-monitor-no-financial-action","status":"failed"}}'
+          response_file=/tmp/afm-kora-response.txt
+          http_code="$(curl --silent --show-error --max-time 20 \
+            -X POST "$url" \
+            -H 'Content-Type: application/json' \
+            -H 'X-Korapay-Signature: afm-monitor-invalid-signature' \
+            --data "$body" \
+            -o "$response_file" -w '%{http_code}')"
+          response="$(cat "$response_file")"
+          echo "$url POST=$http_code response=$response"
+          if [[ "$http_code" != "200" || "$response" != *'"status":"ignored"'* ]]; then
+            printf 'Kora webhook ingress failed: POST=%s response=%s\n' "$http_code" "$response" > /tmp/afm-failures.txt
+            {
+              echo '### Failed Kora webhook ingress check'
+              echo
+              cat /tmp/afm-failures.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'Kora webhook ingress is reachable and rejects invalid signatures with HTTP 200.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Open or update incident issue
         if: failure()
