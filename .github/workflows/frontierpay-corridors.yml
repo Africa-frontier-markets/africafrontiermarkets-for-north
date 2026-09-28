@@ -1,0 +1,76 @@
+name: FrontierPay corridor checks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 6 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: frontierpay-corridor-check
+  cancel-in-progress: true
+
+jobs:
+  check-corridors:
+    name: Check public Kora previews
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run non-financial corridor checks
+        id: check
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/test_frontierpay_corridors.py \
+            --output corridor-check.json \
+            | tee corridor-check.txt
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## FrontierPay corridor check'
+            echo
+            echo 'This check uses the public simulation endpoint only; it does not move funds.'
+            echo
+            echo '```text'
+            cat corridor-check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update incident issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="FrontierPay corridor checks failing"
+          body="Automated non-financial corridor checks failed at $(date -u +%FT%TZ).\n\n$(cat corridor-check.txt)\n\nThe check only calls the public simulation endpoint. Verify Kora Live currency-conversion activation, USD enablement, balance, and account permissions."
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" || true
+          fi
+
+      - name: Close recovered incident
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          issue_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'FrontierPay corridor checks failing in:title' --json number --jq '.[0].number')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body "All FrontierPay corridor previews recovered at $(date -u +%FT%TZ)."
+            gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY"
+          fi
