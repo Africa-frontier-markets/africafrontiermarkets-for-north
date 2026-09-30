@@ -42,6 +42,9 @@ from config.telemetry import app_info, http_requests_total, http_request_duratio
 from event_bus.redis_producer import event_producer
 from event_bus.event_schema import BaseEvent, EventType
 from payment_hub.payment_service import payment_service
+from payment_hub.aza_client import AzaClient, AzaClientError, AZA_CORRIDORS
+# Legacy Kora objects remain imported only for backwards-compatible routes;
+# FrontierPay public quotes and PSP routing no longer use them.
 from payment_hub.kora_client import KoraClient, KoraClientError, get_kora_balance
 from payment_hub.reconciliation import enqueue_reconciliation, reconciliation_worker
 from payment_hub.support_ai import analyze_incident, enrich_with_external_llm
@@ -1163,45 +1166,37 @@ class PaymentSimulationRequest(BaseModel):
     beneficiary_currency: str = Field(..., min_length=3, max_length=3)
     corridor: str = Field(..., pattern="^(ci-ghana|ci-nigeria|benin-nigeria|cameroon-nigeria|cameroon-ivory-coast|ivory-coast-cameroon)$")
     kaybic_fee: Decimal = Field(default=Decimal("0"), ge=0)
-    kora_payin_fee: Decimal = Field(default=Decimal("0"), ge=0)
-    kora_payout_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    aza_payin_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    aza_payout_fee: Decimal = Field(default=Decimal("0"), ge=0)
     afm_fee: Decimal = Field(default=Decimal("0"), ge=0)
     fx_rate: Decimal = Field(default=Decimal("1"), gt=0, description="Used by authenticated sandbox intents; public simulation ignores caller-supplied rates.")
     direction: str = Field(default="payout", pattern="^(payout|payin)$")
     metadata: dict = Field(default_factory=dict)
 
-KORA_DIRECT_FX_PAIRS = {
-    ("XAF", "USD"), ("USD", "XAF"), ("XOF", "USD"), ("USD", "XOF"),
-    ("USD", "NGN"), ("NGN", "USD"), ("USD", "GHS"), ("GHS", "USD"),
-    ("USD", "ZAR"), ("ZAR", "USD"), ("USD", "KES"), ("KES", "USD"),
-}
-
-
-async def get_frontierpay_kora_quote(*, amount: Decimal, source_currency: str, beneficiary_currency: str, reference: str) -> dict:
-    """Fetch a live Kora quote; chain through USD where Kora has no direct pair."""
-    source_currency = source_currency.upper()
-    beneficiary_currency = beneficiary_currency.upper()
-    if source_currency == beneficiary_currency:
-        return {"rate": Decimal("1"), "expiry_date": None, "expiry_in_seconds": None, "legs": []}
-    client = KoraClient(get_settings())
-    if (source_currency, beneficiary_currency) in KORA_DIRECT_FX_PAIRS:
-        quote = await client.get_exchange_rate(
-            amount=amount, from_currency=source_currency, to_currency=beneficiary_currency, reference=reference
-        )
-        return {"rate": quote["rate"], "expiry_date": quote["expiry_date"], "expiry_in_seconds": quote["expiry_in_seconds"], "legs": [quote]}
-    if (source_currency, "USD") not in KORA_DIRECT_FX_PAIRS or ("USD", beneficiary_currency) not in KORA_DIRECT_FX_PAIRS:
-        raise KoraClientError(f"Kora does not support the corridor {source_currency}/{beneficiary_currency}")
-    first = await client.get_exchange_rate(
-        amount=amount, from_currency=source_currency, to_currency="USD", reference=f"{reference}-1"
+async def get_frontierpay_aza_quote(*, amount: Decimal, corridor: str, reference: str) -> dict:
+    """Calculate an AZA sandbox quote without creating or funding a transaction."""
+    if corridor not in AZA_CORRIDORS:
+        raise AzaClientError(f"AZA corridor is not configured: {corridor}")
+    result = await AzaClient(get_settings()).calculate_corridor(
+        corridor=corridor, amount=amount, reference=reference
     )
-    second = await client.get_exchange_rate(
-        amount=first["to_amount"], from_currency="USD", to_currency=beneficiary_currency, reference=f"{reference}-2"
-    )
+    obj = result.get("object", result) if isinstance(result, dict) else {}
+    recipients = obj.get("recipients") if isinstance(obj, dict) else []
+    recipient = recipients[0] if isinstance(recipients, list) and recipients else {}
+    try:
+        input_amount = Decimal(str(recipient.get("input_amount") or obj.get("input_amount") or amount))
+        output_amount = Decimal(str(recipient.get("output_amount") or obj.get("output_amount")))
+        rate = Decimal(str(recipient.get("exchange_rate") or (output_amount / input_amount)))
+    except (ArithmeticError, TypeError, ValueError) as exc:
+        raise AzaClientError("AZA calculate response is missing exchange amounts") from exc
+    if input_amount <= 0 or output_amount < 0 or rate <= 0:
+        raise AzaClientError("AZA calculate response is invalid")
     return {
-        "rate": (first["rate"] * second["rate"]).quantize(Decimal("0.00000001")),
-        "expiry_date": second["expiry_date"] or first["expiry_date"],
-        "expiry_in_seconds": min(x for x in (first["expiry_in_seconds"], second["expiry_in_seconds"]) if isinstance(x, int)) if isinstance(first["expiry_in_seconds"], int) and isinstance(second["expiry_in_seconds"], int) else None,
-        "legs": [first, second],
+        "rate": rate,
+        "input_amount": input_amount,
+        "output_amount": output_amount,
+        "expiry_date": obj.get("expires_at"),
+        "rate_source": "aza_sandbox_calculate",
     }
 
 
@@ -1215,7 +1210,7 @@ class PublicPaymentSimulationResponse(BaseModel):
     corridor: str
     direction: str
     fx_rate: str
-    rate_source: str = Field(default="live_corridor_quote", description="Server-side live corridor quote.")
+    rate_source: str = Field(default="aza_sandbox_calculate", description="Server-side AZA sandbox calculate quote.")
     rate_expiry: str | None = None
     net_source_amount: str
     net_destination_amount: str
@@ -1273,8 +1268,8 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
     """Public fee preview only: no authentication, database write or fund movement."""
     source_currency = payment.source_currency.upper()
     beneficiary_currency = payment.beneficiary_currency.upper()
-    payin_fee = payment.kora_payin_fee
-    payout_fee = payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")
+    payin_fee = payment.aza_payin_fee
+    payout_fee = payment.aza_payout_fee if payment.direction == "payout" else Decimal("0")
     afm_fee = payment.afm_fee
     client_psp_fee = payment.kaybic_fee
     total_fees = (payin_fee + payout_fee + afm_fee + client_psp_fee).quantize(Decimal("0.01"))
@@ -1282,16 +1277,15 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
     if net_source <= 0:
         raise HTTPException(status_code=422, detail="Total fees cannot exceed the source amount")
     try:
-        quote = await get_frontierpay_kora_quote(
+        quote = await get_frontierpay_aza_quote(
             amount=net_source,
-            source_currency=source_currency,
-            beneficiary_currency=beneficiary_currency,
+            corridor=payment.corridor,
             reference=f"frontierpay-public-{uuid.uuid4().hex}",
         )
-    except KoraClientError as exc:
-        raise HTTPException(status_code=503, detail="Live corridor rate is temporarily unavailable") from exc
+    except AzaClientError as exc:
+        raise HTTPException(status_code=503, detail="AZA sandbox corridor rate is temporarily unavailable") from exc
     fx_rate = quote["rate"]
-    net_destination = (net_source * fx_rate).quantize(Decimal("0.01"))
+    net_destination = Decimal(str(quote["output_amount"])).quantize(Decimal("0.01"))
     return {
         "simulation_only": True,
         "execution_mode": "public_preview",
@@ -1301,7 +1295,7 @@ async def public_frontierpay_simulate(payment: PaymentSimulationRequest):
         "corridor": payment.corridor,
         "direction": payment.direction,
         "fx_rate": str(fx_rate),
-        "rate_source": "live_corridor_quote",
+        "rate_source": quote.get("rate_source", "aza_sandbox_calculate"),
         "rate_expiry": quote.get("expiry_date"),
         "net_source_amount": str(net_source),
         "net_destination_amount": str(net_destination),
@@ -1327,8 +1321,8 @@ async def simulate_payment(
     source_currency = payment.source_currency.upper()
     beneficiary_currency = payment.beneficiary_currency.upper()
     total_fees = (
-        payment.kaybic_fee + payment.kora_payin_fee +
-        (payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")) +
+        payment.kaybic_fee + payment.aza_payin_fee +
+        (payment.aza_payout_fee if payment.direction == "payout" else Decimal("0")) +
         payment.afm_fee
     ).quantize(Decimal("0.01"))
     net_source = (payment.amount - total_fees).quantize(Decimal("0.01"))
@@ -1340,7 +1334,7 @@ async def simulate_payment(
     transaction = Transaction(
         idempotency_key=f"sandbox-{uuid.uuid4().hex}",
         user_id=user_id,
-        psp=PSPType.KORA,
+        psp=PSPType.AZA,
         amount=payment.amount,
         currency=source_currency,
         fee_amount=total_fees,
@@ -1363,8 +1357,8 @@ async def simulate_payment(
             "net_destination_amount": str(net_destination),
             "fee_breakdown": {
                 "kaybic": str(payment.kaybic_fee.quantize(Decimal("0.01"))),
-                "kora_payin": str(payment.kora_payin_fee.quantize(Decimal("0.01"))),
-                "kora_payout": str((payment.kora_payout_fee if payment.direction == "payout" else Decimal("0")).quantize(Decimal("0.01"))),
+                "aza_payin": str(payment.aza_payin_fee.quantize(Decimal("0.01"))),
+                "aza_payout": str((payment.aza_payout_fee if payment.direction == "payout" else Decimal("0")).quantize(Decimal("0.01"))),
                 "afm": str(payment.afm_fee.quantize(Decimal("0.01"))),
                 "total": str(total_fees),
             },

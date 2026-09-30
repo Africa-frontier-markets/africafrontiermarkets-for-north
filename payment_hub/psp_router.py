@@ -22,11 +22,11 @@ class PSPRouter:
 
     # Currency → supported PSPs (including mobile money operators)
     CURRENCY_PSP_MAP = {
-        "XOF": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
-        "XAF": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
-        "NGN": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
-        "KES": [PSPType.MTN_MOMO, PSPType.KORA, PSPType.FINCRA],
-        "GHS": [PSPType.MTN_MOMO, PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE],
+        "XOF": [PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "XAF": [PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "NGN": [PSPType.FINCRA, PSPType.FLUTTERWAVE],
+        "KES": [PSPType.MTN_MOMO, PSPType.FINCRA],
+        "GHS": [PSPType.MTN_MOMO, PSPType.FINCRA, PSPType.FLUTTERWAVE],
         "ZAR": [PSPType.FINCRA, PSPType.STRIPE],
         "USD": [PSPType.FINCRA, PSPType.STRIPE],
         "EUR": [PSPType.FINCRA, PSPType.STRIPE],
@@ -34,17 +34,17 @@ class PSPRouter:
     }
 
     METHOD_PSP_MAP = {
-        "mobile_money": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.KORA, PSPType.FLUTTERWAVE],
+        "mobile_money": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY, PSPType.FLUTTERWAVE],
         "card": [PSPType.FLUTTERWAVE, PSPType.STRIPE, PSPType.FINCRA],
-        "bank_transfer": [PSPType.KORA, PSPType.FINCRA, PSPType.STRIPE],
-        "ussd": [PSPType.KORA, PSPType.FLUTTERWAVE],
+        "bank_transfer": [PSPType.FINCRA, PSPType.STRIPE],
+        "ussd": [PSPType.FLUTTERWAVE],
     }
 
     REGION_PSP_PRIORITY = {
-        "west_africa": [PSPType.KORA, PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
-        "east_africa": [PSPType.KORA, PSPType.FINCRA, PSPType.MTN_MOMO],
+        "west_africa": [PSPType.FINCRA, PSPType.FLUTTERWAVE, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "east_africa": [PSPType.FINCRA, PSPType.MTN_MOMO],
         "south_africa": [PSPType.FINCRA, PSPType.STRIPE],
-        "central_africa": [PSPType.KORA, PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
+        "central_africa": [PSPType.MTN_MOMO, PSPType.ORANGE_MONEY],
         "international": [PSPType.STRIPE, PSPType.FINCRA],
     }
 
@@ -86,16 +86,14 @@ class PSPRouter:
     def _has_credentials(cls, psp: PSPType) -> bool:
         settings = get_settings()
         cred_map = {
-            PSPType.KORA: settings.kora_api_key and settings.kora_secret_key,
+            PSPType.KORA: False,
             PSPType.FINCRA: settings.fincra_api_key and settings.fincra_secret_key,
             PSPType.FLUTTERWAVE: settings.flutterwave_public_key and settings.flutterwave_secret_key,
             PSPType.STRIPE: settings.stripe_publishable_key and settings.stripe_secret_key,
-            # MTN MoMo / Orange Money are routed through Kora or
-            # Flutterwave (see payment_service._call_psp_api). The check
-            # looks at *secret* keys, which determine whether the actual
-            # API call can authenticate.
-            PSPType.MTN_MOMO: bool(settings.kora_secret_key) or bool(settings.flutterwave_secret_key),
-            PSPType.ORANGE_MONEY: bool(settings.kora_secret_key) or bool(settings.flutterwave_secret_key),
+            # Mobile rails use Flutterwave in the legacy authenticated flow;
+            # FrontierPay remittance previews use AZA's sandbox calculate API.
+            PSPType.MTN_MOMO: bool(settings.flutterwave_secret_key),
+            PSPType.ORANGE_MONEY: bool(settings.flutterwave_secret_key),
         }
         return bool(cred_map.get(psp))
 

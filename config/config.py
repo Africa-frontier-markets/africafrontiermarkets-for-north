@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     redis_pool_size: int = Field(default=50, ge=10, le=200)
 
     # Payment Providers
+    # AZA Finance / TransferZero sandbox. Secrets are injected only by the
+    # deployment environment; never commit their values.
+    aza_api_key: str | None = None
+    aza_api_secret: str | None = None
+    aza_api_base_url: str = "https://api-sandbox.transferzero.com/v1"
+    aza_allow_transaction_writes: bool = False
     kora_api_key: str | None = None
     kora_secret_key: str | None = None
     kora_api_base_url: str = "https://api.korapay.com/merchant/api/v1"

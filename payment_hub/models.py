@@ -23,6 +23,7 @@ class PaymentStatus(str, Enum):
 
 
 class PSPType(str, Enum):
+    AZA = "aza"
     KORA = "kora"
     FINCRA = "fincra"
     FLUTTERWAVE = "flutterwave"
