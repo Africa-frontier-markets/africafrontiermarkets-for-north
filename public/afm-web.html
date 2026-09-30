@@ -204,6 +204,7 @@
         <button data-tab="frontierpay">FrontierPay</button>
         <button data-tab="easymarket">EasyMarket</button>
         <button data-tab="fintech">Fintech & PSP</button>
+        <button data-tab="compliance">Compliance</button>
         <button data-tab="levee">Opportunite</button>
       </nav>
     </div>
@@ -407,6 +408,26 @@ function renderEasyMarket() {
       </div>
       <div id="em-content"></div>
     </div>
+  `;
+}
+
+function renderCompliance() {
+  return `
+    <div class="hero">
+      <h1>Compliance &amp; protection client</h1>
+      <p>Les fonctionnalités AFM sont conçues avec des contrôles d’identité, de lutte contre la fraude et de traçabilité adaptés aux services proposés.</p>
+    </div>
+    <div class="section" style="background:var(--warn-bg);border-color:var(--warn);">
+      <h2 style="color:var(--warn);">Information importante</h2>
+      <p>Cette page est un résumé public et non contractuel. Les conditions définitives, les limites et les partenaires autorisés restent soumis aux validations juridiques, réglementaires et opérationnelles applicables.</p>
+    </div>
+    <div class="grid-2">
+      <div class="section"><h2>Onboarding et KYC</h2><p>Les services authentifiés peuvent nécessiter une adresse e-mail vérifiée, l’identité déclarée, le pays de résidence, la date de naissance et l’acceptation des conditions et de la politique AML/CFT.</p><ul style="margin-top:14px;padding-left:20px;"><li>Vérification de l’adresse e-mail</li><li>Contrôle séparé du bénéficiaire et du numéro Mobile Money</li><li>Revue renforcée lorsque le corridor ou le profil l’exige</li></ul></div>
+      <div class="section"><h2>AML/CFT et sanctions</h2><p>Les opérations peuvent faire l’objet d’un screening sanctions/PEP, d’un suivi de vélocité, d’une analyse du corridor et d’une revue humaine. Une opération peut être suspendue ou refusée lorsqu’un contrôle échoue.</p><ul style="margin-top:14px;padding-left:20px;"><li>Idempotence et journal d’audit</li><li>Surveillance des bénéficiaires et des montants</li><li>Conservation des traces nécessaires à la réconciliation</li></ul></div>
+    </div>
+    <div class="section"><h2>Protection des fonds et des données</h2><div class="grid-3"><div class="card"><h4>Périmètre des fonds</h4><p>Le simulateur public ne crée aucune transaction et ne déplace aucun fonds. Les transactions réelles sont soumises aux contrôles et aux prestataires autorisés.</p></div><div class="card"><h4>Données</h4><p>Les secrets partenaires sont conservés dans l’environnement de déploiement et ne sont pas exposés dans le site, l’application ou les journaux.</p></div><div class="card"><h4>Transparence</h4><p>Les cotations de démonstration indiquent clairement leur environnement et leur caractère non financier.</p></div></div></div>
+    <div class="section"><h2>FrontierPay et AZA sandbox</h2><p>Le simulateur FrontierPay est prévu pour appeler uniquement le endpoint de calcul AZA sandbox. Les corridors vers le Nigeria sont actuellement configurés en décaissement bancaire dans le sandbox documenté ; aucun PIN Mobile Money n’est demandé.</p><p class="live-note">Statut : la configuration des identifiants AZA sandbox sur l’environnement Northflank doit être confirmée avant d’annoncer une cotation disponible.</p></div>
+    <div class="section"><h2>Documents</h2><p><a class="btn btn-outline" href="/terms">Conditions générales</a> <a class="btn btn-outline" href="/aml-policy">Politique AML/CFT</a> <a class="btn btn-outline" href="/onboarding">Onboarding</a></p></div>
   `;
 }
 
@@ -760,6 +781,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEMTabs();
         break;
       case 'fintech': main.innerHTML = renderFintech(); break;
+      case 'compliance': main.innerHTML = renderCompliance(); break;
       case 'levee': main.innerHTML = renderLevee(); break;
     }
   }
