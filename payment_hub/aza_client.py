@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -16,6 +17,8 @@ from typing import Any
 import httpx
 
 from config.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class AzaClientError(RuntimeError):
@@ -58,6 +61,7 @@ class AzaClient:
 
     async def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.configured:
+            logger.warning("AZA request skipped: credentials not configured")
             raise AzaClientError("AZA sandbox credentials are not configured")
         body = json.dumps(payload or {}, ensure_ascii=False, separators=(",", ":")).encode()
         url = f"{self.settings.aza_api_base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -70,6 +74,7 @@ class AzaClient:
             data: Any = response.json()
             if response.is_error:
                 detail = data.get("message") if isinstance(data, dict) else response.text[:200]
+                logger.warning("AZA request rejected: method=%s path=%s status=%s detail=%s", method.upper(), path, response.status_code, detail or "none")
                 raise AzaClientError(f"AZA request failed ({response.status_code}): {detail or 'request rejected'}")
             if not isinstance(data, dict):
                 raise AzaClientError("AZA response is not a JSON object")

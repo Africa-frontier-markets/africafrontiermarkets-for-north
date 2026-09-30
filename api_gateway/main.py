@@ -1188,6 +1188,7 @@ async def get_frontierpay_aza_quote(*, amount: Decimal, corridor: str, reference
         output_amount = Decimal(str(recipient.get("output_amount") or obj.get("output_amount")))
         rate = Decimal(str(recipient.get("exchange_rate") or (output_amount / input_amount)))
     except (ArithmeticError, TypeError, ValueError) as exc:
+        logger.warning("AZA calculate response missing exchange amounts: top_level_keys=%s", sorted(obj.keys()) if isinstance(obj, dict) else [])
         raise AzaClientError("AZA calculate response is missing exchange amounts") from exc
     if input_amount <= 0 or output_amount < 0 or rate <= 0:
         raise AzaClientError("AZA calculate response is invalid")
