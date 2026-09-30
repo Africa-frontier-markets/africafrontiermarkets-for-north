@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import List, Literal
 from decimal import Decimal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from common.db_url import normalize_database_url
@@ -61,9 +61,9 @@ class Settings(BaseSettings):
     # Payment Providers
     # AZA Finance / TransferZero sandbox. Secrets are injected only by the
     # deployment environment; never commit their values.
-    aza_api_key: str | None = None
-    aza_api_secret: str | None = None
-    aza_api_base_url: str = "https://api-sandbox.transferzero.com/v1"
+    aza_api_key: str | None = Field(default=None, validation_alias=AliasChoices("AZA_API_KEY", "API_key"))
+    aza_api_secret: str | None = Field(default=None, validation_alias=AliasChoices("AZA_API_SECRET", "API_secret"))
+    aza_api_base_url: str = Field(default="https://api-sandbox.transferzero.com/v1", validation_alias=AliasChoices("AZA_API_BASE_URL", "url"))
     aza_allow_transaction_writes: bool = False
     kora_api_key: str | None = None
     kora_secret_key: str | None = None
