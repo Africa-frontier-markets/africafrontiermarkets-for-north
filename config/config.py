@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     aza_api_secret: str | None = Field(default=None, validation_alias=AliasChoices("AZA_API_SECRET", "API_secret"))
     aza_api_base_url: str = Field(default="https://api-sandbox.transferzero.com/v1", validation_alias=AliasChoices("AZA_API_BASE_URL", "url"))
     aza_allow_transaction_writes: bool = False
+    # Nexus Payment Gateway sandbox. The secret is injected by Northflank only.
+    nexus_secret_key: str | None = Field(default=None, validation_alias=AliasChoices("NEXUS_SECRET_KEY", "NEXUS_API_KEY"))
+    nexus_api_base_url: str = Field(default="https://api.dev.neero.io/payment-gateway/api/v1", validation_alias=AliasChoices("NEXUS_API_BASE_URL", "NEXUS_URL"))
+    nexus_platform_code: str | None = Field(default=None, validation_alias=AliasChoices("NEXUS_PLATFORM_CODE", "platformCode"))
+    nexus_webhook_secret: str | None = Field(default=None, validation_alias=AliasChoices("NEXUS_WEBHOOK_SECRET", "NEXUS_SIGNATURE_SECRET"))
+    nexus_allow_transaction_writes: bool = False
     kora_api_key: str | None = None
     kora_secret_key: str | None = None
     kora_api_base_url: str = "https://api.korapay.com/merchant/api/v1"
